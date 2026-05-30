@@ -380,3 +380,59 @@ class BackupCodesPageAndLogoutTests(TestCase):
         protected = self.client.get(reverse("vault:projects"))
         self.assertEqual(protected.status_code, 302)
         self.assertIn(reverse("accounts:login"), protected["Location"])
+
+
+class AdminMFAResetTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="prem", password=PASSWORD)
+        self.device = confirmed_totp(self.user)
+        self.backup = StaticDevice.objects.create(user=self.user, name="backup", confirmed=True)
+        for _ in range(3):
+            self.backup.token_set.create(token=StaticToken.random_token())
+
+    def test_reset_mfa_admin_deletes_totp_device(self):
+        from accounts.views import reset_mfa_admin
+        self.assertTrue(TOTPDevice.objects.filter(user=self.user, confirmed=True).exists())
+        reset_mfa_admin(self.user)
+        self.assertFalse(TOTPDevice.objects.filter(user=self.user, confirmed=True).exists())
+
+    def test_reset_mfa_admin_issues_new_backup_codes(self):
+        from accounts.views import reset_mfa_admin
+        old_backup_codes = list(StaticToken.objects.filter(device=self.backup).values_list('token', flat=True))
+        codes = reset_mfa_admin(self.user)
+        self.assertEqual(len(codes), 10)
+        # Old codes are deleted (backup device was recreated)
+        new_backup = StaticDevice.objects.get(user=self.user, name="backup")
+        new_codes = list(StaticToken.objects.filter(device=new_backup).values_list('token', flat=True))
+        self.assertEqual(len(new_codes), 10)
+        for old_code in old_backup_codes:
+            self.assertNotIn(old_code, new_codes)
+
+    def test_reset_mfa_admin_returns_codes_plaintext(self):
+        from accounts.views import reset_mfa_admin
+        codes = reset_mfa_admin(self.user)
+        self.assertIsInstance(codes, list)
+        self.assertEqual(len(codes), 10)
+        for code in codes:
+            self.assertIsInstance(code, str)
+            self.assertTrue(len(code) > 0)
+
+
+class LostMFADevicePageTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username="qara", password=PASSWORD)
+
+    def test_lost_device_page_denies_anonymous(self):
+        resp = self.client.get(reverse("accounts:lost_mfa_device"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], reverse("accounts:login"))
+
+    def test_lost_device_page_renders_for_authenticated_user(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:lost_mfa_device"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Lost your authenticator?")
+        self.assertContains(resp, "Contact support")
+        self.assertContains(resp, "support@doctorhide.com")

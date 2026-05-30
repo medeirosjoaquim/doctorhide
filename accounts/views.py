@@ -358,3 +358,27 @@ def _issue_backup_codes(user):
         device.token_set.create(token=token)
         codes.append(token)
     return codes
+
+
+def reset_mfa_admin(user):
+    """Admin action to reset a user's TOTP device and reissue backup codes.
+
+    This is used for support/recovery when a user has lost their device.
+    Returns the newly generated backup codes as plaintext (for admin to share).
+    """
+    # Delete the confirmed TOTP device to force re-enrollment.
+    TOTPDevice.objects.filter(user=user, confirmed=True).delete()
+    # Reissue backup codes.
+    codes = _issue_backup_codes(user)
+    return codes
+
+
+def lost_mfa_device(request):
+    """User-facing page for when they've lost their MFA device.
+
+    Provides guidance on contacting support for MFA reset.
+    """
+    if not request.user.is_authenticated:
+        return redirect("accounts:login")
+
+    return render(request, "accounts/lost_mfa_device.html")

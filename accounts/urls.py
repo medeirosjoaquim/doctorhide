@@ -16,6 +16,7 @@ urlpatterns = [
     path("totp/verify", views.totp_verify, name="totp_verify"),
     path("totp/backup-codes", views.backup_codes, name="backup_codes"),
     path("totp/backup-codes.pdf", views.download_backup_codes, name="download_backup_codes"),
+    path("totp/lost-device", views.lost_mfa_device, name="lost_mfa_device"),
     path("settings", views.settings_view, name="settings"),
     path("delete-account", views.delete_account, name="delete_account"),
     path(

@@ -1,0 +1,26 @@
+{% extends "accounts/base.html" %}
+{% block title %}Lost authenticator — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Lost your authenticator?</h1>
+    <p class="sub">If you've lost or replaced your authenticator device, we can reset your multi-factor authentication.</p>
+
+    <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem;">
+        <h3 style="margin-top: 0;">Here's what happens:</h3>
+        <ol style="margin-left: 1.2rem;">
+            <li>Contact support at <strong>support@doctorhide.com</strong> and verify your account ownership</li>
+            <li>An administrator will reset your MFA device and issue new backup codes</li>
+            <li>You'll set up a new authenticator on your device</li>
+        </ol>
+    </div>
+
+    <p class="sub">For security, we require you to verify your identity before resetting MFA.</p>
+
+    <a class="btn btn-primary btn-block" href="mailto:support@doctorhide.com?subject=Reset%20my%20MFA%20device">
+        Contact support
+    </a>
+    <a class="btn btn-ghost btn-block" href="{% url 'vault:projects' %}" style="margin-top: 0.6rem;">Back</a>
+</div>
+</div>
+{% endblock %}
