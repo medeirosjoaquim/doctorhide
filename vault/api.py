@@ -63,6 +63,36 @@ def secret_detail(request, key):
     return Response(data)
 
 
+@api_view(["POST"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
+def secret_restore(request, key):
+    """Restore a soft-deleted secret by clearing deleted_at. Scoped to the
+    authenticated project; only secrets currently soft-deleted are restorable."""
+    project = request.user
+    secret = project.secrets.filter(key=key, deleted_at__isnull=False).first()
+    if secret is None:
+        return Response({"detail": "Not found."}, status=404)
+    secret.restore()
+    data = _project_meta(project)
+    data["key"] = secret.key
+    return Response(data)
+
+
+@api_view(["DELETE"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
+def secret_force_delete(request, key):
+    """Hard-delete a secret, removing the row entirely (no recovery). Scoped to
+    the authenticated project; works on active or soft-deleted secrets."""
+    project = request.user
+    secret = project.secrets.filter(key=key).first()
+    if secret is None:
+        return Response({"detail": "Not found."}, status=404)
+    secret.delete()
+    return Response(status=204)
+
+
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])

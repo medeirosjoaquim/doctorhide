@@ -75,6 +75,11 @@ class Secret(models.Model):
             self.deleted_at = timezone.now()
             self.save(update_fields=["deleted_at"])
 
+    def restore(self):
+        if self.deleted_at is not None:
+            self.deleted_at = None
+            self.save(update_fields=["deleted_at"])
+
     def is_recoverable(self) -> bool:
         if self.deleted_at is None:
             return False
