@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient, APITestCase
 
+from organizations.models import Organization
 from . import crypto
-from .models import Project, ProjectAPIKey, Secret
+from .models import AuditEvent, Project, ProjectAPIKey, Secret
 
 User = get_user_model()
 
@@ -210,3 +211,17 @@ class SoftDeleteTests(APITestCase):
         self.secret.deleted_at = now - (Secret.RECOVERY_WINDOW + self._timezone.timedelta(seconds=1))
         self.secret.save(update_fields=["deleted_at"])
         self.assertFalse(self.secret.is_recoverable())
+
+
+class AuditEventOrganizationTests(APITestCase):
+    def setUp(self):
+        self.org = Organization.objects.create(name="Acme", slug="acme-audit")
+
+    def test_audit_event_scoped_to_organization(self):
+        ev = AuditEvent.objects.create(action="read", organization=self.org)
+        self.assertEqual(ev.organization, self.org)
+        self.assertIn(ev, self.org.audit_events.all())
+
+    def test_organization_optional(self):
+        ev = AuditEvent.objects.create(action="read")
+        self.assertIsNone(ev.organization_id)

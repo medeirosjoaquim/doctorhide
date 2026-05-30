@@ -183,6 +183,13 @@ class AuditEvent(models.Model):
 
     principal = models.CharField(max_length=120, blank=True, default="")
     action = models.CharField(max_length=64)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
     project = models.ForeignKey(
         Project,
         on_delete=models.SET_NULL,

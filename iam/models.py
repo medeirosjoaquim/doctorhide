@@ -29,6 +29,13 @@ class ServiceAccount(models.Model):
         on_delete=models.PROTECT,
         related_name="service_accounts",
     )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="service_accounts",
+        null=True,
+        blank=True,
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

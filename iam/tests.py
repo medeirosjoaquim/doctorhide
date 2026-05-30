@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
+from organizations.models import Membership, Organization
 from .models import APIKey, ServiceAccount
 
 User = get_user_model()
@@ -44,6 +45,26 @@ class APIKeyModelTests(APITestCase):
     def test_split_token_rejects_garbage(self):
         self.assertEqual(APIKey.split_token("nope"), (None, None))
         self.assertEqual(APIKey.split_token("dh_live_onlyid"), (None, None))
+
+
+class ServiceAccountOrganizationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="admin", password="pw")
+        self.org = Organization.objects.create(name="Acme", slug="acme")
+        Membership.objects.create(
+            organization=self.org, user=self.user, role=Membership.ROLE_OWNER
+        )
+
+    def test_service_account_scoped_to_organization(self):
+        sa = ServiceAccount.objects.create(
+            name="billing-api", created_by=self.user, organization=self.org
+        )
+        self.assertEqual(sa.organization, self.org)
+        self.assertIn(sa, self.org.service_accounts.all())
+
+    def test_organization_optional(self):
+        sa = ServiceAccount.objects.create(name="legacy-api", created_by=self.user)
+        self.assertIsNone(sa.organization_id)
 
 
 class WhoamiTests(APITestCase):
