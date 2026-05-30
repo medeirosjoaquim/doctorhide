@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -27,7 +28,12 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-d5i))#u*z4sg#67=6_r^egl93b6^9c8#u_7edwdb-8x&ii6-f0'
+_DEV_SECRET_KEY = 'django-insecure-d5i))#u*z4sg#67=6_r^egl93b6^9c8#u_7edwdb-8x&ii6-f0'
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if os.environ.get('DJANGO_ENV') == 'production':
+        raise ImproperlyConfigured('SECRET_KEY must be set in production.')
+    SECRET_KEY = _DEV_SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', '').lower() in ('1', 'true', 'yes')

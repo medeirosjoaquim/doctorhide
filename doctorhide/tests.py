@@ -2,9 +2,34 @@ import importlib
 import os
 from unittest import mock
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
 import doctorhide.settings as dh_settings
+
+
+class SecretKeyEnvTests(SimpleTestCase):
+    def tearDown(self):
+        importlib.reload(dh_settings)
+
+    def test_secret_key_from_env(self):
+        with mock.patch.dict(os.environ, {'SECRET_KEY': 'env-provided-key'}):
+            self.assertEqual(importlib.reload(dh_settings).SECRET_KEY, 'env-provided-key')
+
+    def test_secret_key_falls_back_to_dev_when_unset(self):
+        env = {k: v for k, v in os.environ.items() if k not in ('SECRET_KEY', 'DJANGO_ENV')}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(
+                importlib.reload(dh_settings).SECRET_KEY,
+                dh_settings._DEV_SECRET_KEY,
+            )
+
+    def test_secret_key_required_in_production(self):
+        env = {k: v for k, v in os.environ.items() if k != 'SECRET_KEY'}
+        env['DJANGO_ENV'] = 'production'
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(ImproperlyConfigured):
+                importlib.reload(dh_settings)
 
 
 class DebugEnvTests(SimpleTestCase):
