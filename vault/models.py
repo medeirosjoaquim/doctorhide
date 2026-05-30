@@ -225,3 +225,68 @@ class AuditEvent(models.Model):
 
     def __str__(self):
         return f"{self.action}:{self.outcome}"
+
+
+class WebhookEndpoint(models.Model):
+    """Outbound webhook configuration for secret lifecycle events.
+
+    Webhooks are scoped to an organization and receive HMAC-SHA256-signed
+    payloads for secret lifecycle events (created, updated, rotated, deleted).
+    """
+
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="webhook_endpoints",
+    )
+    url = models.URLField(max_length=2048)
+    secret = models.CharField(max_length=255)
+    events = models.JSONField(default=list, blank=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("id",)
+
+    def __str__(self):
+        return f"{self.organization.name}/{self.url}"
+
+
+class WebhookDelivery(models.Model):
+    """Record of a webhook delivery attempt for a lifecycle event.
+
+    Stores the request sent, response received, and delivery status.
+    Allows introspection and retry logic for failed deliveries.
+    """
+
+    STATUS_PENDING = "pending"
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    endpoint = models.ForeignKey(
+        WebhookEndpoint,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    event_type = models.CharField(max_length=64)
+    payload = models.JSONField()
+    status = models.CharField(
+        max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    response_status = models.PositiveIntegerField(null=True, blank=True)
+    response_body = models.TextField(blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.endpoint}/{self.event_type}:{self.status}"

@@ -16,6 +16,7 @@ from .authentication import ProjectAPIKeyAuthentication
 from .throttling import ProjectRateThrottle
 from .models import Secret, SecretVersion
 from . import audit
+from . import webhooks
 
 CHARSET_TYPES = {
     "lower": string.ascii_lowercase,
@@ -227,6 +228,7 @@ def secret_detail(request, key):
         return Response({"detail": "Not found."}, status=404)
     if request.method == "DELETE":
         secret.soft_delete()
+        webhooks.emit_secret_soft_deleted(secret)
         audit.record(request, "secret.delete", "success", project=project, secret_key=key)
         return Response(status=204)
     audit.record(request, "secret.read", "success", project=project, secret_key=key)
@@ -395,6 +397,7 @@ def secret_rotate(request, key):
         label="rotated",
     )
 
+    webhooks.emit_secret_rotated(secret)
     audit.record(request, "secret.rotate", "success", project=project, secret_key=key)
     return Response(_secret_data(project, secret))
 
