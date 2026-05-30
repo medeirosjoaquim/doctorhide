@@ -33,7 +33,7 @@ class SignupStateTests(TestCase):
 
     def test_happy_path_sets_pending_and_redirects_to_enroll(self):
         resp = self.client.post(reverse("accounts:signup"), {
-            "username": "carol", "password1": PASSWORD, "password2": PASSWORD,
+            "username": "carol", "email": "carol@example.com", "password1": PASSWORD, "password2": PASSWORD,
         })
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp["Location"], reverse("accounts:totp_enroll"))
@@ -46,7 +46,7 @@ class SignupStateTests(TestCase):
     def test_rejects_duplicate_username_case_insensitive(self):
         User.objects.create_user(username="dave", password=PASSWORD)
         resp = self.client.post(reverse("accounts:signup"), {
-            "username": "DAVE", "password1": PASSWORD, "password2": PASSWORD,
+            "username": "DAVE", "email": "dave2@example.com", "password1": PASSWORD, "password2": PASSWORD,
         })
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "That username is already taken.")
@@ -54,7 +54,7 @@ class SignupStateTests(TestCase):
 
     def test_rejects_mismatched_password(self):
         resp = self.client.post(reverse("accounts:signup"), {
-            "username": "erin", "password1": PASSWORD, "password2": "different!pw",
+            "username": "erin", "email": "erin@example.com", "password1": PASSWORD, "password2": "different!pw",
         })
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Passwords don&#x27;t match.")
@@ -62,14 +62,14 @@ class SignupStateTests(TestCase):
 
     def test_rejects_weak_password(self):
         resp = self.client.post(reverse("accounts:signup"), {
-            "username": "frank", "password1": "password", "password2": "password",
+            "username": "frank", "email": "frank@example.com", "password1": "password", "password2": "password",
         })
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(User.objects.filter(username="frank").exists())
 
     def test_rejects_empty_username(self):
         resp = self.client.post(reverse("accounts:signup"), {
-            "username": "", "password1": PASSWORD, "password2": PASSWORD,
+            "username": "", "email": "grace@example.com", "password1": PASSWORD, "password2": PASSWORD,
         })
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Username is required.")

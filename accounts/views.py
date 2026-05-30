@@ -1,5 +1,6 @@
 import base64
 import io
+import secrets
 
 import qrcode
 from django.contrib.auth import authenticate, get_user_model
@@ -9,6 +10,7 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from reportlab.lib.pagesizes import letter
@@ -19,6 +21,8 @@ from django_otp import match_token
 from django_otp.decorators import otp_required
 from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
 from django_otp.plugins.otp_totp.models import TOTPDevice
+
+from .models import EmailVerificationToken
 
 User = get_user_model()
 
@@ -53,8 +57,10 @@ def signup(request):
 
     errors = []
     username = ""
+    email = ""
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
+        email = request.POST.get("email", "").strip()
         password1 = request.POST.get("password1", "")
         password2 = request.POST.get("password2", "")
 
@@ -62,6 +68,10 @@ def signup(request):
             errors.append("Username is required.")
         elif User.objects.filter(username__iexact=username).exists():
             errors.append("That username is already taken.")
+        if not email:
+            errors.append("Email is required.")
+        elif User.objects.filter(email__iexact=email).exists():
+            errors.append("That email is already in use.")
         if password1 != password2:
             errors.append("Passwords don't match.")
 
@@ -72,12 +82,26 @@ def signup(request):
                 errors.extend(exc.messages)
 
         if not errors:
-            user = User.objects.create_user(username=username, password=password1)
+            user = User.objects.create_user(username=username, email=email, password=password1)
+            # Generate email verification token
+            token = secrets.token_urlsafe(48)
+            EmailVerificationToken.objects.update_or_create(
+                user=user,
+                defaults={'token': token}
+            )
+            # Send verification email
+            verification_url = request.build_absolute_uri(f"/accounts/verify-email/{token}/")
+            send_mail(
+                subject="Verify your doctorhide email",
+                message=f"Click the link to verify your email:\n\n{verification_url}",
+                from_email="noreply@doctorhide.com",
+                recipient_list=[email],
+            )
             # New humans must enrol TOTP before the account is usable.
             request.session[PENDING_SESSION_KEY] = user.pk
             return redirect("accounts:totp_enroll")
 
-    return render(request, "accounts/signup.html", {"errors": errors, "username": username})
+    return render(request, "accounts/signup.html", {"errors": errors, "username": username, "email": email})
 
 
 def login_view(request):
@@ -306,6 +330,21 @@ def _complete_login(request, user, device):
     request.session.pop(PENDING_SESSION_KEY, None)
     auth_login(request, user)
     otp_login(request, device)
+
+
+def verify_email(request, token):
+    """Verify email via token link from signup."""
+    try:
+        verification_token = EmailVerificationToken.objects.get(token=token)
+    except EmailVerificationToken.DoesNotExist:
+        return render(request, "accounts/verify_email_invalid.html")
+
+    user = verification_token.user
+    user.email_verified = True
+    user.save()
+    verification_token.delete()
+
+    return render(request, "accounts/verify_email_success.html", {"username": user.username})
 
 
 def _issue_backup_codes(user):

@@ -1,0 +1,13 @@
+{% extends "accounts/base.html" %}
+{% block title %}Invalid verification link — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Invalid verification link</h1>
+    <p>The email verification link is invalid or has expired. Please sign up again to receive a new verification link.</p>
+    <p style="margin-top: 2rem;">
+        <a href="{% url 'accounts:signup' %}" class="btn btn-primary btn-block">Sign up</a>
+    </p>
+</div>
+</div>
+{% endblock %}
