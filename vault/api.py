@@ -175,6 +175,27 @@ def secret_detail(request, key):
     return Response(_secret_data(project, secret))
 
 
+@api_view(["GET"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
+def secret_describe(request, key):
+    """Return a secret's metadata (key, timestamps) without the ciphertext.
+    Lets clients inspect existence and audit fields without fetching the
+    encrypted value. Includes soft-deleted secrets so deleted_at is visible."""
+    project = request.user
+    secret = project.secrets.filter(key=key).first()
+    if secret is None:
+        return Response({"detail": "Not found."}, status=404)
+    return Response(
+        {
+            "key": secret.key,
+            "created_at": secret.created_at,
+            "updated_at": secret.updated_at,
+            "deleted_at": secret.deleted_at,
+        }
+    )
+
+
 @api_view(["POST"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
