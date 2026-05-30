@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'drf_spectacular',
     'django_otp',
     'django_otp.plugins.otp_totp',
     'django_otp.plugins.otp_static',
@@ -190,12 +191,18 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_RATES': {
         # Per-project rate limit for the dhk_ vault API. Configurable from env;
         # a generous default keeps dev/test working without extra setup while
         # still capping abusive clients.
         'vault_api': os.environ.get('VAULT_API_THROTTLE_RATE', '1000/min'),
     },
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'doctorhide API',
+    'VERSION': '1.0.0',
 }
 
 # Label shown in the authenticator app (e.g. Google Authenticator).
