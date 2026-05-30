@@ -225,6 +225,83 @@ def logout_view(request):
     return redirect("accounts:login")
 
 
+@otp_required
+def delete_account(request):
+    """OTP-reauth-gated account deletion flow."""
+
+    error = None
+    success = False
+
+    if request.method == "POST":
+        token = request.POST.get("token", "").strip()
+        # Re-authenticate the user via OTP token (must have confirmed TOTP).
+        device = match_token(request.user, token)
+        if device is None:
+            error = "Invalid code."
+        else:
+            # Token verified. Now check org ownership constraints and handle
+            # ServiceAccount.created_by foreign keys before deleting the user.
+            from organizations.models import Membership
+            from iam.models import ServiceAccount
+
+            try:
+                # Check if user is the last owner of any organization with other members.
+                owner_memberships = Membership.objects.filter(
+                    user=request.user, role=Membership.ROLE_OWNER
+                ).select_related("organization")
+
+                for membership in owner_memberships:
+                    org = membership.organization
+                    # Check if there are other owners in this org.
+                    other_owners = Membership.objects.filter(
+                        organization=org, role=Membership.ROLE_OWNER
+                    ).exclude(user=request.user)
+
+                    # If user is the sole owner AND there are other members, block.
+                    if not other_owners.exists():
+                        other_members = Membership.objects.filter(
+                            organization=org
+                        ).exclude(user=request.user)
+                        if other_members.exists():
+                            error = (
+                                f"You are the last owner of '{org.name}' and it has "
+                                f"other members. Please transfer ownership or remove "
+                                f"the other members first."
+                            )
+                            break
+
+                if not error:
+                    # Check for service accounts created by this user.
+                    # Since ServiceAccount.created_by has on_delete=PROTECT, we must
+                    # handle them before deletion.
+                    service_accounts = ServiceAccount.objects.filter(
+                        created_by=request.user
+                    )
+
+                    if service_accounts.exists():
+                        # For now, block deletion if user created service accounts.
+                        # (Alternative: reassign to org owner, but that's more complex.)
+                        error = (
+                            "You have created service accounts that must be deleted "
+                            "or reassigned before your account can be deleted."
+                        )
+
+                if not error:
+                    # All checks passed. Delete the user and cascade.
+                    username = request.user.get_username()
+                    request.user.delete()
+                    auth_logout(request)
+                    success = True
+
+            except Exception as exc:
+                error = f"An error occurred: {str(exc)}"
+
+    if success:
+        return render(request, "accounts/delete_account_success.html")
+
+    return render(request, "accounts/delete_account.html", {"error": error})
+
+
 def _complete_login(request, user, device):
     request.session.pop(PENDING_SESSION_KEY, None)
     auth_login(request, user)

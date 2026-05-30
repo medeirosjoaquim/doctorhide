@@ -18,6 +18,10 @@
         {{ form.as_p }}
         <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.3rem;">Change password</button>
     </form>
+
+    <h1 style="margin-top:2rem; font-size:1.2rem;">Delete account</h1>
+    <p style="color: #999; font-size: 0.9rem;">Permanently delete your account and all associated data.</p>
+    <a href="{% url 'accounts:delete_account' %}" class="btn btn-primary btn-block" style="margin-top:1.3rem; background-color: #d32f2f;">Delete account</a>
 </div>
 </div>
 {% endblock %}
