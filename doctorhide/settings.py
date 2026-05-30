@@ -148,6 +148,26 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 
+# Logging
+# Minimal console logging. Level comes from LOG_LEVEL (default INFO).
+
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+}
+
+
 # Authentication
 
 AUTH_USER_MODEL = 'accounts.User'
