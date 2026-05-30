@@ -176,6 +176,12 @@ LOGIN_URL = 'accounts:login'
 LOGIN_REDIRECT_URL = 'vault:projects'
 LOGOUT_REDIRECT_URL = 'accounts:login'
 
+# Email. Console backend by default so password-reset links are printed to the
+# console in dev/test; override with EMAIL_BACKEND in production.
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
+)
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'iam.authentication.APIKeyAuthentication',
