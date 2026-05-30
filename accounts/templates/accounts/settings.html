@@ -1,0 +1,23 @@
+{% extends "accounts/base.html" %}
+{% block title %}Account settings — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Account settings</h1>
+    <p class="sub">Signed in as <strong>{{ request.user.get_username }}</strong></p>
+    <ul class="codes">
+        <li>Username: {{ request.user.get_username }}</li>
+        <li>Joined: {{ request.user.date_joined }}</li>
+        <li>Last login: {{ request.user.last_login }}</li>
+    </ul>
+
+    <h1 style="margin-top:2rem; font-size:1.2rem;">Change password</h1>
+    {% if form.errors %}<p class="error">Please correct the errors below.</p>{% endif %}
+    <form method="post" action="{% url 'accounts:settings' %}">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.3rem;">Change password</button>
+    </form>
+</div>
+</div>
+{% endblock %}

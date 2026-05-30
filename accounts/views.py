@@ -5,6 +5,8 @@ import qrcode
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth import login as auth_login
 from django.contrib.auth import logout as auth_logout
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
@@ -14,6 +16,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from django_otp import login as otp_login
 from django_otp import match_token
+from django_otp.decorators import otp_required
 from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
@@ -200,6 +203,21 @@ def download_backup_codes(request):
         content_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="doctorhide-backup-codes.pdf"'},
     )
+
+
+@otp_required
+def settings_view(request):
+    if request.method == "POST":
+        form = PasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            # Keep the current session valid after the password hash changes.
+            update_session_auth_hash(request, user)
+            return redirect("accounts:settings")
+    else:
+        form = PasswordChangeForm(request.user)
+
+    return render(request, "accounts/settings.html", {"form": form})
 
 
 def logout_view(request):
