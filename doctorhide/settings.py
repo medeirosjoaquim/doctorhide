@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
     'rest_framework',
     'drf_spectacular',
     'django_otp',
@@ -69,6 +70,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -210,6 +212,14 @@ SPECTACULAR_SETTINGS = {
 # Label shown in the authenticator app (e.g. Google Authenticator).
 OTP_TOTP_ISSUER = 'doctorhide'
 
+
+# CORS. Allowed origins from env (empty default allows none). Typical values:
+# CORS_ALLOWED_ORIGINS="https://app.example.com,https://www.example.com"
+CORS_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',')
+    if o.strip()
+]
 
 # Production-only HTTPS hardening. Off in dev/test so the suite and local
 # servers work over plain HTTP without extra env vars.

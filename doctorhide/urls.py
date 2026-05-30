@@ -28,6 +28,7 @@ urlpatterns = [
     path('', include('organizations.urls')),
     path('', include('vault.urls')),
     path('api/', include('vault.api_urls')),
+    path('v1/api/', include('vault.api_urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path(
         'api/schema/swagger-ui/',
