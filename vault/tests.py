@@ -150,3 +150,63 @@ class GeneratePasswordAPITests(APITestCase):
         self.assertEqual(
             self.client.get("/api/generate-password?require-types=emoji").status_code, 400
         )
+
+
+class SoftDeleteTests(APITestCase):
+    def setUp(self):
+        from django.test import Client
+        from django.utils import timezone
+        from django_otp import DEVICE_ID_SESSION_KEY
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+
+        self._timezone = timezone
+        self.user = User.objects.create_user(username="alice", password="pw")
+        self.project, self.key = make_project(self.user)
+        self.secret = Secret.objects.create(
+            project=self.project, key="gmail.com", ciphertext=crypto.encrypt(self.key, "abc123")
+        )
+        self.api_key, self.token = ProjectAPIKey.generate(self.project)
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+        # OTP-verified web client for the web delete view.
+        self.web = Client()
+        device = TOTPDevice.objects.create(user=self.user, name="default", confirmed=True)
+        self.web.force_login(self.user)
+        session = self.web.session
+        session[DEVICE_ID_SESSION_KEY] = device.persistent_id
+        session.save()
+
+    def test_web_delete_is_soft_and_recoverable(self):
+        from django.urls import reverse
+
+        url = reverse("vault:secret_delete", args=[self.project.public_id, self.secret.id])
+        res = self.web.post(url)
+        self.assertEqual(res.status_code, 302)
+        self.secret.refresh_from_db()
+        self.assertIsNotNone(self.secret.deleted_at)
+        # Row is kept (soft delete), still within the recovery window.
+        self.assertTrue(Secret.objects.filter(id=self.secret.id).exists())
+        self.assertTrue(self.secret.is_recoverable())
+
+    def test_soft_deleted_hidden_from_list_and_detail(self):
+        self.secret.soft_delete()
+        listed = self.client.get("/api/secrets")
+        self.assertEqual(listed.json()["keys"], [])
+        detail = self.client.get("/api/secrets/gmail.com")
+        self.assertEqual(detail.status_code, 404)
+
+    def test_api_delete_soft_deletes(self):
+        res = self.client.delete("/api/secrets/gmail.com")
+        self.assertEqual(res.status_code, 204)
+        self.secret.refresh_from_db()
+        self.assertIsNotNone(self.secret.deleted_at)
+        self.assertTrue(Secret.objects.filter(id=self.secret.id).exists())
+        # Second delete now 404s since it is excluded by default.
+        self.assertEqual(self.client.delete("/api/secrets/gmail.com").status_code, 404)
+
+    def test_recovery_window_expires(self):
+        now = self._timezone.now()
+        self.secret.deleted_at = now - (Secret.RECOVERY_WINDOW + self._timezone.timedelta(seconds=1))
+        self.secret.save(update_fields=["deleted_at"])
+        self.assertFalse(self.secret.is_recoverable())

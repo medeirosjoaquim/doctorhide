@@ -72,7 +72,7 @@ def project_detail(request, public_id):
     secrets_view = []
     if key is not None:
         reveal_id = request.GET.get("reveal")
-        for secret in project.secrets.all():
+        for secret in project.secrets.filter(deleted_at__isnull=True):
             value = None
             if str(secret.id) == reveal_id:
                 value = crypto.decrypt(key, secret.ciphertext)
@@ -137,7 +137,9 @@ def secret_add(request, public_id):
 def secret_delete(request, public_id, secret_id):
     project = _get_project(request, public_id)
     if request.method == "POST":
-        project.secrets.filter(id=secret_id).delete()
+        secret = project.secrets.filter(id=secret_id, deleted_at__isnull=True).first()
+        if secret:
+            secret.soft_delete()
     return redirect("vault:detail", public_id=public_id)
 
 

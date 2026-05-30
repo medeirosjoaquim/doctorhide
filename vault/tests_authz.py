@@ -429,8 +429,13 @@ class VaultSecretMutationTests(TestCase):
             kwargs={"public_id": self.project.public_id, "secret_id": gone.id},
         )
         self.client.post(url)
-        self.assertFalse(Secret.objects.filter(pk=gone.pk).exists())
-        self.assertTrue(Secret.objects.filter(pk=keep.pk).exists())
+        # Soft delete: the row remains but is excluded from the active set.
+        self.assertFalse(
+            Secret.objects.filter(pk=gone.pk, deleted_at__isnull=True).exists()
+        )
+        self.assertTrue(
+            Secret.objects.filter(pk=keep.pk, deleted_at__isnull=True).exists()
+        )
 
     def test_secret_delete_noop_on_get(self):
         target = make_secret(self.project, self.key, name="GETSAFE", value="v")

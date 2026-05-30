@@ -206,8 +206,13 @@ class SecretLifecycleViewTests(TestCase):
             reverse("vault:secret_delete", args=[self.project.public_id, s1.id])
         )
         self.assertEqual(res.status_code, 302)
-        self.assertFalse(Secret.objects.filter(id=s1.id).exists())
-        self.assertTrue(Secret.objects.filter(id=s2.id).exists())
+        # Soft delete: the row remains but is excluded from the active set.
+        self.assertFalse(
+            Secret.objects.filter(id=s1.id, deleted_at__isnull=True).exists()
+        )
+        self.assertTrue(
+            Secret.objects.filter(id=s2.id, deleted_at__isnull=True).exists()
+        )
 
     def test_delete_secret_from_other_project_is_noop(self):
         other_project, other_key = make_project(self.user, name="staging")

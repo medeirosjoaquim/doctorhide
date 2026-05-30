@@ -37,20 +37,26 @@ def secrets_list(request):
     """List the keys in the authenticated project. Values are not returned."""
     project = request.user
     data = _project_meta(project)
-    data["keys"] = list(project.secrets.values_list("key", flat=True))
+    data["keys"] = list(
+        project.secrets.filter(deleted_at__isnull=True).values_list("key", flat=True)
+    )
     return Response(data)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
 def secret_detail(request, key):
-    """Return the encrypted value for one key. The client derives the key from
-    the passphrase + salt and decrypts locally — plaintext never leaves here."""
+    """GET returns the encrypted value for one key; the client derives the key
+    from the passphrase + salt and decrypts locally — plaintext never leaves
+    here. DELETE soft-deletes the secret, keeping it recoverable for a window."""
     project = request.user
-    secret = project.secrets.filter(key=key).first()
+    secret = project.secrets.filter(key=key, deleted_at__isnull=True).first()
     if secret is None:
         return Response({"detail": "Not found."}, status=404)
+    if request.method == "DELETE":
+        secret.soft_delete()
+        return Response(status=204)
     data = _project_meta(project)
     data["key"] = secret.key
     data["ciphertext"] = secret.ciphertext

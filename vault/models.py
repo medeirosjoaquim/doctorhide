@@ -59,6 +59,9 @@ class Secret(models.Model):
     ciphertext = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    RECOVERY_WINDOW = timezone.timedelta(days=30)
 
     class Meta:
         unique_together = ("project", "key")
@@ -66,6 +69,16 @@ class Secret(models.Model):
 
     def __str__(self):
         return f"{self.project.name}/{self.key}"
+
+    def soft_delete(self):
+        if self.deleted_at is None:
+            self.deleted_at = timezone.now()
+            self.save(update_fields=["deleted_at"])
+
+    def is_recoverable(self) -> bool:
+        if self.deleted_at is None:
+            return False
+        return timezone.now() <= self.deleted_at + self.RECOVERY_WINDOW
 
 
 class ProjectAPIKey(models.Model):
