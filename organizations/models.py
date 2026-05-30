@@ -62,6 +62,21 @@ class Membership(models.Model):
         return self.ROLE_RANK[self.role] >= self.ROLE_RANK[role]
 
 
+def membership_for(user, organization):
+    """Return the user's Membership in `organization`, or None when the user is
+    not authenticated or not a member. The single source of truth for whether a
+    user may act inside an organization, and at what role."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return None
+    if organization is None:
+        return None
+    return (
+        Membership.objects.filter(user=user, organization=organization)
+        .select_related("organization")
+        .first()
+    )
+
+
 def _unique_slug(base):
     base = slugify(base) or "org"
     slug = base

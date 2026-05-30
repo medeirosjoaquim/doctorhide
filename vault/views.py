@@ -1,8 +1,14 @@
 from django.contrib import messages
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django_otp.decorators import otp_required
 
-from organizations.models import Organization, personal_organization
+from organizations.models import (
+    Membership,
+    Organization,
+    membership_for,
+    personal_organization,
+)
 
 from . import crypto
 from .models import Project, ProjectAPIKey, Secret
@@ -47,17 +53,41 @@ def _forget_key(request, project):
         request.session[SESSION_KEYS] = keys
 
 
-def _get_project(request, public_id):
-    return get_object_or_404(Project, public_id=public_id, owner=request.user)
+def _get_project(request, public_id, required_role=Membership.ROLE_VIEWER):
+    """Resolve a project the caller may act on, enforcing org-membership RBAC.
+
+    The project must belong to an organization the caller is a member of, and
+    that membership must be at least ``required_role``. Both non-membership and
+    insufficient role surface as 404 so the tenant boundary never leaks whether
+    a project exists. The resolved membership is stashed on the request for
+    views/templates that vary on role.
+    """
+    project = get_object_or_404(
+        Project, public_id=public_id, organization__memberships__user=request.user
+    )
+    membership = membership_for(request.user, project.organization)
+    if membership is None or not membership.at_least(required_role):
+        raise Http404("No such project.")
+    request.current_membership = membership
+    return project
 
 
 @otp_required
 def projects(request):
-    return render(request, "vault/projects.html", {"projects": request.user.projects.all()})
+    org = current_organization(request)
+    return render(
+        request,
+        "vault/projects.html",
+        {"projects": Project.objects.filter(organization=org)},
+    )
 
 
 @otp_required
 def project_create(request):
+    org = current_organization(request)
+    membership = membership_for(request.user, org)
+    if membership is None or not membership.at_least(Membership.ROLE_ADMIN):
+        raise Http404("No such organization.")
     error = None
     name = ""
     if request.method == "POST":
@@ -74,7 +104,7 @@ def project_create(request):
             key = crypto.derive_key(passphrase, salt)
             project = Project.objects.create(
                 owner=request.user,
-                organization=current_organization(request),
+                organization=org,
                 public_id=Project.new_public_id(),
                 name=name,
                 salt=salt,
@@ -136,7 +166,7 @@ def project_lock(request, public_id):
 
 @otp_required
 def secret_add(request, public_id):
-    project = _get_project(request, public_id)
+    project = _get_project(request, public_id, required_role=Membership.ROLE_MEMBER)
     key = _unlocked_key(request, project)
     if key is None:
         messages.error(request, "Unlock the project first.")
@@ -157,7 +187,7 @@ def secret_add(request, public_id):
 
 @otp_required
 def secret_delete(request, public_id, secret_id):
-    project = _get_project(request, public_id)
+    project = _get_project(request, public_id, required_role=Membership.ROLE_MEMBER)
     if request.method == "POST":
         secret = project.secrets.filter(id=secret_id, deleted_at__isnull=True).first()
         if secret:
@@ -167,7 +197,7 @@ def secret_delete(request, public_id, secret_id):
 
 @otp_required
 def api_key_create(request, public_id):
-    project = _get_project(request, public_id)
+    project = _get_project(request, public_id, required_role=Membership.ROLE_ADMIN)
     if request.method == "POST":
         _, token = ProjectAPIKey.generate(project, name=request.POST.get("name", "").strip())
         request.session[NEW_API_KEY_SESSION] = token  # shown once on the detail page
@@ -176,7 +206,7 @@ def api_key_create(request, public_id):
 
 @otp_required
 def api_key_revoke(request, public_id, key_id):
-    project = _get_project(request, public_id)
+    project = _get_project(request, public_id, required_role=Membership.ROLE_ADMIN)
     if request.method == "POST":
         api_key = project.api_keys.filter(id=key_id).first()
         if api_key:
