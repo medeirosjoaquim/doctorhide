@@ -13,6 +13,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
@@ -63,6 +64,7 @@ def signup(request):
         email = request.POST.get("email", "").strip()
         password1 = request.POST.get("password1", "")
         password2 = request.POST.get("password2", "")
+        accept_terms = request.POST.get("accept_terms", "").strip()
 
         if not username:
             errors.append("Username is required.")
@@ -74,6 +76,8 @@ def signup(request):
             errors.append("That email is already in use.")
         if password1 != password2:
             errors.append("Passwords don't match.")
+        if not accept_terms:
+            errors.append("You must accept the Terms of Service and Privacy Policy.")
 
         if not errors:
             try:
@@ -83,6 +87,10 @@ def signup(request):
 
         if not errors:
             user = User.objects.create_user(username=username, email=email, password=password1)
+            # Record terms acceptance
+            user.accepted_terms_version = "1.0"
+            user.accepted_at = timezone.now()
+            user.save()
             # Generate email verification token
             token = secrets.token_urlsafe(48)
             EmailVerificationToken.objects.update_or_create(

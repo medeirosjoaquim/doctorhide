@@ -22,6 +22,12 @@
         <input type="password" id="password1" name="password1" autocomplete="new-password">
         <label for="password2">Confirm password</label>
         <input type="password" id="password2" name="password2" autocomplete="new-password">
+        <div style="margin-top:1.3rem;">
+            <label for="accept_terms" style="display:flex;align-items:center;gap:0.5rem;">
+                <input type="checkbox" id="accept_terms" name="accept_terms" value="on">
+                <span>I accept the Terms of Service and Privacy Policy</span>
+            </label>
+        </div>
         <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.3rem;">Create account</button>
     </form>
     <p class="muted-link" style="margin-top:1.2rem;">Already have an account? <a href="{% url 'accounts:login' %}">Log in</a></p>

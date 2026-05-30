@@ -79,6 +79,7 @@ class EmailVerificationFlowTests(TestCase):
                 "email": "test@example.com",
                 "password1": self.password,
                 "password2": self.password,
+                "accept_terms": "on",
             },
         )
         self.assertEqual(resp.status_code, 302)
@@ -154,6 +155,7 @@ class EmailVerificationFlowTests(TestCase):
                 "email": "TEST@EXAMPLE.COM",
                 "password1": self.password,
                 "password2": self.password,
+                "accept_terms": "on",
             },
         )
         self.assertEqual(resp.status_code, 200)
@@ -168,6 +170,7 @@ class EmailVerificationFlowTests(TestCase):
                 "email": "",
                 "password1": self.password,
                 "password2": self.password,
+                "accept_terms": "on",
             },
         )
         self.assertEqual(resp.status_code, 200)
@@ -183,6 +186,7 @@ class EmailVerificationFlowTests(TestCase):
                 "email": "dave@example.com",
                 "password1": self.password,
                 "password2": self.password,
+                "accept_terms": "on",
             },
         )
         self.assertEqual(resp.status_code, 302)
@@ -196,3 +200,61 @@ class EmailVerificationFlowTests(TestCase):
         self.assertEqual(
             self.client.session["totp_pending_user_id"], user.pk
         )
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend"
+)
+class TermsAcceptanceTests(TestCase):
+    def setUp(self):
+        self.password = "sup3rSecret!pw"
+
+    def test_signup_requires_terms_acceptance(self):
+        """Test that signup requires the terms acceptance checkbox."""
+        resp = self.client.post(
+            reverse("accounts:signup"),
+            {
+                "username": "testuser",
+                "email": "test@example.com",
+                "password1": self.password,
+                "password2": self.password,
+                # Deliberately missing accept_terms
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "You must accept the Terms of Service and Privacy Policy.")
+        self.assertFalse(User.objects.filter(username="testuser").exists())
+
+    def test_signup_with_terms_acceptance_stores_version_and_timestamp(self):
+        """Test that signup with accepted terms stores version and timestamp."""
+        resp = self.client.post(
+            reverse("accounts:signup"),
+            {
+                "username": "testuser",
+                "email": "test@example.com",
+                "password1": self.password,
+                "password2": self.password,
+                "accept_terms": "on",
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+
+        user = User.objects.get(username="testuser")
+        self.assertEqual(user.accepted_terms_version, "1.0")
+        self.assertIsNotNone(user.accepted_at)
+
+    def test_signup_rejects_without_terms_checkbox(self):
+        """Test that signup fails if accept_terms is empty string."""
+        resp = self.client.post(
+            reverse("accounts:signup"),
+            {
+                "username": "testuser",
+                "email": "test@example.com",
+                "password1": self.password,
+                "password2": self.password,
+                "accept_terms": "",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "You must accept the Terms of Service and Privacy Policy.")
+        self.assertFalse(User.objects.filter(username="testuser").exists())

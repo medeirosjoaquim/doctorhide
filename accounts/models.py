@@ -7,6 +7,8 @@ class User(AbstractUser):
     without a painful AUTH_USER_MODEL swap."""
 
     email_verified = models.BooleanField(default=False)
+    accepted_terms_version = models.CharField(max_length=16, null=True, blank=True, default=None)
+    accepted_at = models.DateTimeField(null=True, blank=True, default=None)
 
 
 class EmailVerificationToken(models.Model):
