@@ -190,6 +190,12 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_RATES': {
+        # Per-project rate limit for the dhk_ vault API. Configurable from env;
+        # a generous default keeps dev/test working without extra setup while
+        # still capping abusive clients.
+        'vault_api': os.environ.get('VAULT_API_THROTTLE_RATE', '1000/min'),
+    },
 }
 
 # Label shown in the authenticator app (e.g. Google Authenticator).

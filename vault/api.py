@@ -5,11 +5,13 @@ from rest_framework.decorators import (
     api_view,
     authentication_classes,
     permission_classes,
+    throttle_classes,
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .authentication import ProjectAPIKeyAuthentication
+from .throttling import ProjectRateThrottle
 from .models import Secret
 from . import audit
 
@@ -49,6 +51,7 @@ def _parse_int(value, default, minimum):
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secrets_list(request):
     """List the keys in the authenticated project. Values are not returned.
 
@@ -97,6 +100,7 @@ def _secret_data(project, secret):
 @api_view(["GET", "POST"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secrets_batch_get(request):
     """Return ciphertext + metadata for several keys in one request. Keys come
     from a JSON list body (POST {"keys": [...]}) or repeated ?key= query params
@@ -195,6 +199,7 @@ def _write_secret(request, key, require_new):
 @api_view(["GET", "POST", "PUT", "DELETE"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secret_detail(request, key):
     """GET returns the encrypted value for one key; the client derives the key
     from the passphrase + salt and decrypts locally — plaintext never leaves
@@ -221,6 +226,7 @@ def secret_detail(request, key):
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secret_describe(request, key):
     """Return a secret's metadata (key, timestamps) without the ciphertext.
     Lets clients inspect existence and audit fields without fetching the
@@ -243,6 +249,7 @@ def secret_describe(request, key):
 @api_view(["POST"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secret_restore(request, key):
     """Restore a soft-deleted secret by clearing deleted_at. Scoped to the
     authenticated project; only secrets currently soft-deleted are restorable."""
@@ -261,6 +268,7 @@ def secret_restore(request, key):
 @api_view(["DELETE"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def secret_force_delete(request, key):
     """Hard-delete a secret, removing the row entirely (no recovery). Scoped to
     the authenticated project; works on active or soft-deleted secrets."""
@@ -277,6 +285,7 @@ def secret_force_delete(request, key):
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
+@throttle_classes([ProjectRateThrottle])
 def generate_password(request):
     """Generate a random value using the stdlib `secrets` module. The result is
     returned but never persisted — this is a stateless helper for clients."""
