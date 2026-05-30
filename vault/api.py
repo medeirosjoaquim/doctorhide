@@ -51,7 +51,8 @@ def _parse_int(value, default, minimum):
 def secrets_list(request):
     """List the keys in the authenticated project. Values are not returned.
 
-    Supports a `prefix` filter (key starts-with) and limit/offset pagination.
+    Supports a `prefix` filter (key starts-with), a `tag` filter (key carries
+    the tag) and limit/offset pagination.
     """
     project = request.user
     keys = project.secrets.filter(deleted_at__isnull=True)
@@ -59,6 +60,10 @@ def secrets_list(request):
     prefix = request.query_params.get("prefix")
     if prefix:
         keys = keys.filter(key__startswith=prefix)
+
+    tag = request.query_params.get("tag")
+    if tag:
+        keys = keys.filter(tags__contains=[tag])
 
     keys = keys.order_by("key")
     count = keys.count()
@@ -148,6 +153,13 @@ def _write_secret(request, key, require_new):
             status=400,
         )
     token = request.data.get("ClientRequestToken") or None
+    tags = request.data.get("tags")
+    if tags is not None and (
+        not isinstance(tags, list) or not all(isinstance(t, str) for t in tags)
+    ):
+        return Response(
+            {"detail": "tags must be a list of strings."}, status=400
+        )
 
     secret = project.secrets.filter(key=key).first()
     if secret is not None and token and secret.idempotency_token == token:
@@ -164,6 +176,8 @@ def _write_secret(request, key, require_new):
     secret.ciphertext = ciphertext
     secret.payload_type = payload_type
     secret.idempotency_token = token
+    if tags is not None:
+        secret.tags = tags
     secret.deleted_at = None
     secret.save()
     return Response(_secret_data(project, secret), status=201 if created else 200)

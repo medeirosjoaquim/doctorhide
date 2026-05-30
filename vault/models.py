@@ -68,6 +68,7 @@ class Secret(models.Model):
         max_length=16, choices=PAYLOAD_TYPE_CHOICES, default=PAYLOAD_STRING
     )
     idempotency_token = models.CharField(max_length=255, null=True, blank=True)
+    tags = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
