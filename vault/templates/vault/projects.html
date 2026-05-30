@@ -1,0 +1,36 @@
+{% extends "accounts/base.html" %}
+{% block title %}Projects — doctorhide{% endblock %}
+{% block body %}
+<style>
+    .page { max-width: 760px; margin: 3rem auto; padding: 0 1.5rem; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .page-head h1 { margin: 0; font-size: 1.6rem; }
+    .proj-list { display: grid; gap: 0.8rem; }
+    .proj {
+        display: flex; align-items: center; justify-content: space-between;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.1rem 1.3rem; text-decoration: none;
+    }
+    .proj:hover { border-color: var(--accent); }
+    .proj .meta { color: var(--muted); font-size: 0.85rem; font-family: ui-monospace, monospace; }
+    .empty { color: var(--muted); background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); padding: 2rem; text-align: center; }
+</style>
+<div class="page">
+    <div class="page-head">
+        <h1>Projects</h1>
+        <a class="btn btn-primary" href="{% url 'vault:create' %}">New project</a>
+    </div>
+    {% if projects %}
+    <div class="proj-list">
+        {% for p in projects %}
+        <a class="proj" href="{% url 'vault:detail' public_id=p.public_id %}">
+            <span><strong>{{ p.name }}</strong><br><span class="meta">{{ p.public_id }}</span></span>
+            <span class="meta">{{ p.secrets.count }} secret{{ p.secrets.count|pluralize }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">No projects yet. Create one to start storing secrets.</div>
+    {% endif %}
+</div>
+{% endblock %}

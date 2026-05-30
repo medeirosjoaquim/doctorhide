@@ -1,0 +1,393 @@
+{% extends "accounts/base.html" %}
+{% block title %}Docs — doctorhide{% endblock %}
+{% block body %}
+<div class="container" style="padding-top:2.5rem; padding-bottom:4rem; max-width:880px;">
+    <h1>doctorhide documentation</h1>
+
+    <nav class="toc" style="background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem 1.4rem; margin:1.4rem 0 2.4rem;">
+        <strong>On this page</strong>
+        <ul style="margin:0.6rem 0 0; padding-left:1.1rem;">
+            <li><a href="#getting-started">Getting started</a></li>
+            <li><a href="#using-the-web-app">Using the web app</a></li>
+            <li><a href="#api-reference">API reference</a></li>
+            <li><a href="#decrypting-a-secret">Decrypting a secret (client-side)</a></li>
+            <li><a href="#security-model">Security model</a></li>
+        </ul>
+    </nav>
+
+    <section id="getting-started">
+<h2>Getting started</h2>
+
+<p>doctorhide is a Django 6 + DRF zero-knowledge secrets vault. This guide gets you from a clean checkout to your first unlocked project, and walks through the secure first-login flow: sign up, enroll TOTP, and save your one-time backup codes.</p>
+
+<h3>1. Install &amp; run</h3>
+
+<p>There is no <code>requirements.txt</code> &mdash; dependencies are installed inline. Create a virtualenv and install the deps:</p>
+
+<pre><code>uv venv venv
+uv pip install --python venv/bin/python django djangorestframework django-otp "qrcode[pil]" "psycopg[binary]" python-dotenv
+source venv/bin/activate</code></pre>
+
+<p>Start Postgres. The app expects it on host port <strong>5433</strong> (mapped to the container's 5432):</p>
+
+<pre><code>docker run -d --name doctorhide-postgres \
+  -e POSTGRES_DB=doctorhide \
+  -e POSTGRES_USER=doctorhide \
+  -e POSTGRES_PASSWORD=doctorhide \
+  -p 5433:5432 \
+  -v doctorhide_pgdata:/var/lib/postgresql/data \
+  postgres:17</code></pre>
+
+<p>Copy the example environment file. It already contains the five <code>POSTGRES_*</code> values matching the docker defaults above (host <code>127.0.0.1</code>, port <code>5433</code>). Real process env vars take precedence over <code>.env</code>.</p>
+
+<pre><code>cp .env.example .env</code></pre>
+
+<p>Run the migrations, create an admin account, and start the dev server:</p>
+
+<pre><code>python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver</code></pre>
+
+<p>The app is now at <code>http://127.0.0.1:8000/</code>. Open that root URL to land on the home page &mdash; it does not auto-redirect, so use the nav to reach Sign up.</p>
+
+<p>Note: every route in this project has <strong>no trailing slash</strong> (e.g. <code>/signup</code>, <code>/login</code>, <code>/totp/enroll</code>, <code>/projects</code>).</p>
+
+<h3>2. Sign up</h3>
+
+<p>Go to <code>/signup</code> and fill the three fields: <code>username</code>, <code>password1</code>, <code>password2</code>. The form checks that the username is unique (case-insensitive), that the two passwords match, and that the password passes Django's validators.</p>
+
+<p>Important: signing up does <strong>not</strong> log you in. Your account is unusable until you finish TOTP enrollment. On success you are redirected straight to <code>/totp/enroll</code>.</p>
+
+<h3>3. Enroll TOTP with the QR code</h3>
+
+<p>At <code>/totp/enroll</code> you'll see a QR code. Scan it with an authenticator app (Google Authenticator, Authy, 1Password, etc.). The QR encodes the device's provisioning URL.</p>
+
+<p>If you can't scan, expand the <em>"Can't scan?"</em> disclosure to copy the manual <code>otpauth://</code> provisioning URL and enter it by hand.</p>
+
+<p>Then type the current 6-digit code from your authenticator and submit. On a correct code, doctorhide confirms the device, issues your backup codes, logs you in, and redirects to the backup-codes screen. If the code is rejected, re-enter it &mdash; a clock-drift hint is shown (make sure your device clock is accurate).</p>
+
+<h3>4. SAVE your backup codes &mdash; download the PDF</h3>
+
+<p>You are now on <code>/totp/backup-codes</code>, which displays your <strong>10 one-time backup codes</strong>. Each code works exactly once. These let you log in if you ever lose your authenticator, so store them somewhere safe right now.</p>
+
+<p>&#9888;&#65039; <strong>Do this now: click the "Download PDF" button.</strong> This is the single most important step on this screen. It downloads <code>doctorhide-backup-codes.pdf</code> (a <code>application/pdf</code> attachment) containing your username and all 10 codes in a printable layout. The codes are only shown this once &mdash; after you leave this screen they cannot be retrieved.</p>
+
+<ul>
+  <li>The <strong>Download PDF</strong> button serves the file from route <code>/totp/backup-codes.pdf</code> (it reuses the same session-held codes, so download before navigating away).</li>
+  <li>The <strong>Continue</strong> button takes you to <code>/projects</code> to start using the vault.</li>
+</ul>
+
+<p>If you click Continue or refresh after the codes leave your session, the PDF link will no longer have anything to serve and redirects you back. So: download (or print) first, then Continue.</p>
+
+<h3>5. Returning logins</h3>
+
+<p>On later visits, go to <code>/login</code> and enter your <code>username</code> and <code>password</code>. That's only the first factor &mdash; you are then sent to <code>/totp/verify</code> to enter your second factor. There you can use either a current 6-digit authenticator code <strong>or</strong> one of your backup codes (each backup code works once). On success you land on <code>/projects</code>.</p>
+
+<p>The entire vault (projects, secrets, API keys) requires an OTP-verified session, which is exactly what this flow gives you.</p>
+    </section>
+
+    <section id="using-the-web-app">
+<h2>Using the web app</h2>
+
+<p>This is a hands-on walkthrough of the doctorhide browser UI: creating a project, setting and using its passphrase, adding and deleting secrets, and minting and revoking a project API key. It assumes you are already logged in and OTP-verified (you completed signup, scanned your authenticator, and saved your backup codes). Every vault page requires a verified two-factor session.</p>
+
+<p>One thing to know up front: doctorhide is zero-knowledge. Your project passphrase is never sent to the server in a form that can be stored, and the server keeps only a salt, an iteration count, a verifier, and per-secret ciphertext. If you forget the passphrase, the secrets cannot be recovered. None of the routes in this app use a trailing slash.</p>
+
+<h3>1. Create a project and set its passphrase</h3>
+<ol>
+  <li>Go to <code>/projects</code> (the Projects link in the top nav). This lists the projects you own.</li>
+  <li>Open <code>/projects/new</code> and fill the form. There are two fields:
+    <ul>
+      <li><strong>Project name</strong> — required, must be unique among your own projects.</li>
+      <li><strong>Salt</strong> (the passphrase) — required, at least 8 characters. This is the secret you will type to unlock the project, and it is the only thing that can decrypt your secrets. As the form itself warns: "The salt encrypts this project's secrets. We never store it — if you lose it, the secrets are unrecoverable." Store it somewhere safe.</li>
+    </ul>
+  </li>
+  <li>Click <em>Create project</em>. The server generates a random salt, derives a key from your passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations), stores a verifier, and creates the project. You are redirected to the project detail page at <code>/projects/&lt;public_id&gt;</code> (project ids look like <code>proj_&lt;hex&gt;</code>).</li>
+</ol>
+<p>A newly created project is <strong>auto-unlocked</strong> for the current session, so you can start adding secrets immediately without re-typing the passphrase.</p>
+
+<h3>2. Unlock and lock</h3>
+<p>The project detail page at <code>/projects/&lt;public_id&gt;</code> is either locked or unlocked for your current session.</p>
+<ul>
+  <li><strong>Unlock:</strong> when locked, the page shows an Unlock panel ("Enter the salt to view or add secrets."). Type your passphrase into the Salt field and click <em>Unlock</em>. The server re-derives the key from the stored salt and iterations and checks it against the verifier. If correct, the derived key is cached in your session and the page now shows your secrets and API keys. If wrong, you get a <em>"Wrong salt."</em> error and stay locked.</li>
+  <li><strong>Lock:</strong> when unlocked, a <em>Lock</em> button appears at the top of the page. Click it to drop the cached key from your session. The secrets and add-secret form disappear and you are back to the Unlock panel. Locking does not delete anything; it just forgets the key until you unlock again.</li>
+</ul>
+<p>The cached key lives only in your session while unlocked. Logging out, or the session ending, also effectively re-locks the project.</p>
+
+<h3>3. Add and delete secrets</h3>
+<p>You must have the project unlocked to add a secret (otherwise you get <em>"Unlock the project first."</em>).</p>
+<ol>
+  <li><strong>Add:</strong> in the Secrets panel, fill the two inputs — <strong>key</strong> (the secret's name, e.g. <code>gmail.com</code> or <code>DATABASE_URL</code>) and <strong>value</strong> (the secret content) — then click <em>Add</em>. Both are required (otherwise you get <em>"Both key and value are required."</em>). On submit the value is encrypted with the unlocked key and stored only as ciphertext. Adding a secret whose key already exists updates that secret in place.</li>
+  <li><strong>Reveal:</strong> secrets are listed by key only, with the value shown as <code>••••••••</code>. Values stay hidden until you click the per-row <em>Reveal</em> link, which reloads the detail page with <code>?reveal=&lt;id&gt;</code> and decrypts just that one secret for display.</li>
+  <li><strong>Delete:</strong> click <em>Delete</em> on a secret's row. It is removed immediately and you stay on the detail page.</li>
+</ol>
+
+<h3>4. Mint a project API key (shown only once)</h3>
+<p>Project API keys let machines read this project's secret names and ciphertext through the REST API under <code>/api/secrets</code>. They are scoped to this one project.</p>
+<ol>
+  <li>In the <em>API keys</em> panel on the project detail page, click <em>Generate API key</em>.</li>
+  <li>The page reloads and shows the freshly minted raw key once, in a highlighted box: <em>"New API key — copy it now, it won't be shown again:"</em></li>
+</ol>
+<p><strong>This is the only time the full key is ever shown.</strong> The server stores only the key's prefix, a SHA-256 hash of the secret portion, and the last four characters — so it cannot display the full key again. Afterward the list only shows the prefix, last four characters, and usage status. Copy the raw key immediately into your machine's config or secret store. It looks like this:</p>
+<pre><code>dhk_&lt;id&gt;_&lt;secret&gt;</code></pre>
+<p>Here <code>&lt;id&gt;</code> is a per-key random identifier (not the project's <code>public_id</code>), and the <code>dhk_&lt;id&gt;</code> portion is the stored prefix.</p>
+<p>You use it as a bearer token against the project API. There are two endpoints:</p>
+<ul>
+  <li><strong>List secret names:</strong> <code>GET /api/secrets</code> returns the key-derivation metadata (<code>project_id</code>, <code>kdf</code>, <code>salt</code>, <code>iterations</code>) plus a <code>keys</code> array of the project's secret names. <strong>It does not return any ciphertext.</strong></li>
+  <li><strong>Fetch one ciphertext:</strong> <code>GET /api/secrets/&lt;key&gt;</code> returns the same metadata plus <code>key</code> and the encrypted <code>ciphertext</code> for that one secret (or <code>404 {"detail": "Not found."}</code> if there is no such key). The path accepts slashes in the key.</li>
+</ul>
+<pre><code># list the secret names in the project
+curl -H "Authorization: Bearer dhk_&lt;id&gt;_&lt;secret&gt;" \
+  https://your-host/api/secrets
+
+# fetch the ciphertext for one secret
+curl -H "Authorization: Bearer dhk_&lt;id&gt;_&lt;secret&gt;" \
+  https://your-host/api/secrets/gmail.com</code></pre>
+<p>The <code>kdf</code> field is returned as the literal string <code>pbkdf2-sha256</code>. The API authorizes fetching ciphertext plus this key-derivation metadata only. It does <strong>not</strong> grant decryption — a client still needs the project passphrase to derive the key (from <code>salt</code> + <code>iterations</code>) and decrypt locally. The detail page's "Client config" panel shows exactly that metadata and a copy-pasteable single-secret <code>curl</code> example against <code>/api/secrets/&lt;key&gt;</code>.</p>
+
+<h3>5. Revoke an API key</h3>
+<p>The API keys panel lists each key as <code>prefix…last_four</code> with a status of <em>never used</em>, <em>last used &lt;date&gt;</em>, or <em>revoked</em>. To disable a key, click <em>Revoke</em> on its row. The key is marked revoked immediately and stops authenticating against the API. Once revoked, the Revoke button no longer appears for that key and its status reads <em>revoked</em>. Revoking is the right move if a key is leaked or no longer needed — you cannot un-revoke, so just generate a new one when you need a replacement.</p>
+
+<h3>Quick reference</h3>
+<ul>
+  <li>List projects: <code>/projects</code></li>
+  <li>Create project: <code>/projects/new</code> (Project name + Salt/passphrase ≥ 8 chars)</li>
+  <li>Project detail / unlock / secrets / keys: <code>/projects/&lt;public_id&gt;</code></li>
+  <li>Reveal one secret: <code>/projects/&lt;public_id&gt;?reveal=&lt;id&gt;</code></li>
+  <li>API — list secret names (no ciphertext): <code>GET /api/secrets</code></li>
+  <li>API — fetch one ciphertext: <code>GET /api/secrets/&lt;key&gt;</code></li>
+  <li>Auth header: <code>Authorization: Bearer dhk_&lt;id&gt;_&lt;secret&gt;</code> (key shown once)</li>
+</ul>
+    </section>
+
+    <section id="api-reference">
+<h2>API reference</h2>
+<p>doctorhide exposes a tiny, read-only machine API. There are exactly three GET endpoints and no write methods: secrets are created and managed only through the human web UI, never through this API. The base for vault calls is <code>/api/</code> (no <code>/v1/</code> prefix), and the introspection probe lives at the project root <code>/whoami</code>. Examples below assume the dev server at <code>http://127.0.0.1:8000</code>.</p>
+
+<p><strong>The API never returns plaintext.</strong> It is zero-knowledge: the server only ever stores the per-project salt, iteration count, a verifier, and each secret&#39;s Fernet ciphertext. The detail endpoint returns the <em>ciphertext</em> plus the KDF metadata you need to derive the key yourself; your passphrase is never sent to the server and decryption happens entirely on the client.</p>
+
+<h3>Authentication</h3>
+<p>There are two kinds of bearer tokens, used by two different surfaces. Both go in a standard <code>Authorization</code> header with the <code>Bearer</code> keyword.</p>
+<ul>
+<li><strong>Project keys</strong> (<code>dhk_&lt;public_id&gt;_&lt;secret&gt;</code>) authenticate the two <code>/api/secrets</code> endpoints. Mint one in the web UI on a project detail page (Keys &rarr; new); the raw token is shown <em>once</em>. The key authorizes fetching ciphertext and metadata only &mdash; it does not grant decryption.</li>
+<li><strong>Service-account keys</strong> (<code>dh_live_&lt;public_id&gt;_&lt;secret&gt;</code>) authenticate <code>/whoami</code>. <code>/whoami</code> also accepts a logged-in browser session.</li>
+</ul>
+<p>Header shape for the vault endpoints:</p>
+<pre><code>Authorization: Bearer dhk_&lt;public_id&gt;_&lt;secret&gt;</code></pre>
+<p>Common 401 responses: a header that does not split into exactly two whitespace parts returns <code>{&quot;detail&quot;: &quot;Malformed Authorization header.&quot;}</code>; a wrong prefix, unknown key, bad secret, or a revoked/expired key returns <code>{&quot;detail&quot;: &quot;Invalid API key.&quot;}</code>.</p>
+
+<h3>GET /api/secrets &mdash; list secret names + KDF metadata</h3>
+<p>Returns the names of every secret in the authenticated project, plus the KDF inputs. No values, no ciphertext.</p>
+<pre><code>curl http://127.0.0.1:8000/api/secrets \
+  -H &quot;Authorization: Bearer dhk_8f3a2c10b7d49e15_AbCdEf...secret...&quot;</code></pre>
+<p>Response:</p>
+<pre><code>{
+  &quot;project_id&quot;: &quot;proj_8f3a2c10b7d49e15&quot;,
+  &quot;kdf&quot;: &quot;pbkdf2-sha256&quot;,
+  &quot;salt&quot;: &quot;Yk9mUXc3c0RqVHZ3dA==&quot;,
+  &quot;iterations&quot;: 600000,
+  &quot;keys&quot;: [&quot;DATABASE_URL&quot;, &quot;gmail.com&quot;, &quot;STRIPE_SECRET_KEY&quot;]
+}</code></pre>
+<p>The <code>salt</code> is standard base64; <code>iterations</code> is per-project (default 600000) &mdash; always use the value from the response, not a hardcoded constant.</p>
+
+<h3>GET /api/secrets/{key} &mdash; fetch one ciphertext + KDF metadata</h3>
+<p>Returns the same KDF metadata plus the requested secret&#39;s name and its Fernet ciphertext. The <code>key</code> path segment uses a <code>&lt;path&gt;</code> converter, so it may contain slashes and dots (for example <code>DATABASE_URL</code>, <code>gmail.com</code>, or <code>app/config.json</code>). There are no query parameters.</p>
+<pre><code>curl http://127.0.0.1:8000/api/secrets/DATABASE_URL \
+  -H &quot;Authorization: Bearer dhk_8f3a2c10b7d49e15_AbCdEf...secret...&quot;</code></pre>
+<p>Response:</p>
+<pre><code>{
+  &quot;project_id&quot;: &quot;proj_8f3a2c10b7d49e15&quot;,
+  &quot;kdf&quot;: &quot;pbkdf2-sha256&quot;,
+  &quot;salt&quot;: &quot;Yk9mUXc3c0RqVHZ3dA==&quot;,
+  &quot;iterations&quot;: 600000,
+  &quot;key&quot;: &quot;DATABASE_URL&quot;,
+  &quot;ciphertext&quot;: &quot;gAAAAABm...Fernet-token...==&quot;
+}</code></pre>
+<p>If the key is not in the project you get <code>404 {&quot;detail&quot;: &quot;Not found.&quot;}</code>. Note again: the response carries <code>ciphertext</code>, never the decrypted value. The verifier is <em>not</em> returned by the API.</p>
+
+<h3>Decrypting locally</h3>
+<p>Derive the Fernet key from your passphrase plus the response&#39;s <code>salt</code> and <code>iterations</code>, then Fernet-decrypt the ciphertext. A wrong passphrase surfaces as <code>InvalidToken</code> when decrypting a real ciphertext (the verifier is not exposed by the API). Watch the base64 asymmetry: the salt is decoded with <em>standard</em> base64, while the derived key is encoded <em>URL-safe</em>.</p>
+<pre><code>import base64, requests
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+def derive_key(passphrase, salt_b64, iterations):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=base64.b64decode(salt_b64),   # STANDARD base64 for the salt
+        iterations=iterations,             # from the response, not hardcoded
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))  # URL-safe -&gt; Fernet key
+
+BASE = &quot;http://127.0.0.1:8000/api&quot;
+HEADERS = {&quot;Authorization&quot;: &quot;Bearer dhk_8f3a2c10b7d49e15_AbCdEf...secret...&quot;}
+
+r = requests.get(f&quot;{BASE}/secrets/DATABASE_URL&quot;, headers=HEADERS).json()
+key = derive_key(my_passphrase, r[&quot;salt&quot;], r[&quot;iterations&quot;])
+plaintext = Fernet(key).decrypt(r[&quot;ciphertext&quot;].encode()).decode()
+# wrong passphrase -&gt; cryptography.fernet.InvalidToken</code></pre>
+
+<h3>GET /whoami &mdash; identity probe</h3>
+<p>Reports the resolved principal. Use it to confirm a service-account key is wired up correctly. It works with a <code>dh_live_</code> key or with a logged-in session; when no <code>Authorization</code> header is present, machine auth is skipped and it falls through to session auth.</p>
+<pre><code>curl http://127.0.0.1:8000/whoami \
+  -H &quot;Authorization: Bearer dh_live_1a2b3c4d5e6f7a8b_GhIjKl...secret...&quot;</code></pre>
+<p>Service-account response:</p>
+<pre><code>{&quot;type&quot;: &quot;service_account&quot;, &quot;name&quot;: &quot;ci-deployer&quot;}</code></pre>
+<p>Human session response:</p>
+<pre><code>{&quot;type&quot;: &quot;user&quot;, &quot;username&quot;: &quot;alice@example.com&quot;}</code></pre>
+    </section>
+
+    <section id="decrypting-a-secret">
+<h2>Decrypting a secret (client-side)</h2>
+<p>DoctorHide is zero-knowledge: the API only ever hands you <strong>ciphertext</strong> plus the key-derivation metadata. It never stores or returns your passphrase or any plaintext. Decryption happens entirely on your machine. The flow is:</p>
+<ol>
+<li>Fetch the secret with your project API key (<code>Bearer dhk_&lt;key_id&gt;_&lt;secret&gt;</code>). The response includes <code>salt</code>, <code>iterations</code>, and <code>ciphertext</code>.</li>
+<li>Re-derive the Fernet key from your passphrase using PBKDF2-HMAC-SHA256 with the returned <code>salt</code> and <code>iterations</code>.</li>
+<li>Fernet-decrypt the ciphertext locally.</li>
+</ol>
+<p>Two encoding details must match the server exactly, or decryption fails:</p>
+<ul>
+<li>The <code>salt</code> is <strong>standard</strong> base64 — decode it with <code>base64.b64decode</code>.</li>
+<li>The 32 derived bytes are then re-encoded with <strong>URL-safe</strong> base64 to form the Fernet key.</li>
+<li>The passphrase is encoded as UTF-8.</li>
+<li>Always use the <code>iterations</code> value from the response (it is per-project), not a hardcoded constant.</li>
+</ul>
+<p>Runnable example. It calls <code>GET /api/secrets/&lt;key&gt;</code>, derives the key, and decrypts:</p>
+<pre><code>import base64
+import requests
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+def derive_key(passphrase: str, salt_b64: str, iterations: int) -&gt; bytes:
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=base64.b64decode(salt_b64),   # salt is STANDARD base64
+        iterations=iterations,             # use the value from the response
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))  # URL-safe -&gt; Fernet key
+
+
+BASE = &quot;http://127.0.0.1:8000/api&quot;
+API_KEY = &quot;dhk_&lt;key_id&gt;_&lt;secret&gt;&quot;
+PASSPHRASE = &quot;your-project-passphrase&quot;   # never sent to the server
+
+r = requests.get(
+    f&quot;{BASE}/secrets/DATABASE_URL&quot;,
+    headers={&quot;Authorization&quot;: f&quot;Bearer {API_KEY}&quot;},
+)
+r.raise_for_status()
+data = r.json()
+# data = {&quot;project_id&quot;: &quot;proj_...&quot;, &quot;kdf&quot;: &quot;pbkdf2-sha256&quot;,
+#         &quot;salt&quot;: ..., &quot;iterations&quot;: 600000,
+#         &quot;key&quot;: &quot;DATABASE_URL&quot;, &quot;ciphertext&quot;: &quot;gAAAAAB...&quot;}
+
+key = derive_key(PASSPHRASE, data[&quot;salt&quot;], data[&quot;iterations&quot;])
+try:
+    plaintext = Fernet(key).decrypt(data[&quot;ciphertext&quot;].encode()).decode()
+except InvalidToken:
+    raise SystemExit(&quot;Wrong passphrase (or tampered ciphertext)&quot;)
+
+print(plaintext)
+</code></pre>
+<p>A wrong passphrase derives a different key, and Fernet raises <code>cryptography.fernet.InvalidToken</code> — that is how you detect a bad passphrase, since the verifier is not exposed over the REST API.</p>
+<p>This example was executed against <code>vault/crypto.py</code>: a secret was encrypted with <code>crypto.encrypt(key, plaintext)</code> using a key from <code>crypto.derive_key(passphrase, salt, iterations)</code>, then the client code above decrypted it back to the original plaintext. The key produced by the client <code>derive_key</code> was verified byte-for-byte identical to <code>crypto.derive_key</code>, and a wrong passphrase raised <code>InvalidToken</code> as expected.</p>
+<p>The list endpoint returns only the key <strong>names</strong> (in a <code>keys</code> array) plus the same KDF metadata (no ciphertext). Fetch a specific key to get its ciphertext:</p>
+<pre><code>curl -s -H &quot;Authorization: Bearer dhk_&lt;key_id&gt;_&lt;secret&gt;&quot; \
+  http://127.0.0.1:8000/api/secrets
+
+curl -s -H &quot;Authorization: Bearer dhk_&lt;key_id&gt;_&lt;secret&gt;&quot; \
+  http://127.0.0.1:8000/api/secrets/DATABASE_URL
+</code></pre>
+<p>The <code>&lt;key&gt;</code> path segment uses a path converter, so keys may contain slashes or dots (for example <code>app/config.json</code> or <code>gmail.com</code>). Note there are no trailing slashes anywhere in this API.</p>
+    </section>
+
+    <section id="security-model">
+<h2>Security model</h2>
+
+<p>doctorhide is built so that the server can hold your secrets without ever being able to read them. Three things make that true, and all three are enforced in code: encryption happens before data reaches the database, API keys are stored only as hashes, and every account is locked behind TOTP.</p>
+
+<h3>Zero-knowledge vault</h3>
+
+<p>Each project has a <strong>passphrase</strong> (the UI labels it &quot;Salt&quot; on the create/unlock forms, but the POST field is named <code>passphrase</code> and it must be at least 8 characters). The passphrase is never sent to or stored by the server in any usable form. From it the server derives an encryption key and throws the key away as soon as the request ends.</p>
+
+<p>Key derivation lives in <code>vault/crypto.py</code> and uses <strong>PBKDF2-HMAC-SHA256</strong>:</p>
+
+<ul>
+  <li><strong>Salt</strong>: 16 random bytes generated per project, stored as standard base64 (<code>generate_salt()</code>).</li>
+  <li><strong>Iterations</strong>: <code>600000</code> by default, stored per project as a mutable field (<code>Project.iterations</code>), so it is read back per request rather than hardcoded.</li>
+  <li><strong>Output</strong>: 32 raw bytes, then URL-safe base64 encoded into a <strong>Fernet</strong> key (AES-128-CBC + HMAC-SHA256).</li>
+</ul>
+
+<p>What the server actually persists per project is only: <code>salt</code>, <code>iterations</code>, and a <code>verifier</code>. The verifier is <code>Fernet(key).encrypt(b&quot;doctorhide-verify&quot;)</code> &mdash; an encrypt-then-MAC token used to check a passphrase on unlock without storing the passphrase. On unlock the server re-derives the key from the submitted passphrase plus the stored salt and iterations, then runs <code>crypto.verify_key</code>; a mismatch throws Fernet&apos;s <code>InvalidToken</code> and the UI shows &quot;Wrong salt.&quot;</p>
+
+<p>Per secret, the server stores only the <code>ciphertext</code> (a Fernet token). There is no plaintext column and no passphrase column anywhere:</p>
+
+<ul>
+  <li><strong>Project</strong> &rarr; <code>salt</code>, <code>iterations</code>, <code>verifier</code> (never the passphrase).</li>
+  <li><strong>Secret</strong> &rarr; <code>ciphertext</code> (never the plaintext value).</li>
+</ul>
+
+<p>While a project is unlocked in the web UI, the derived Fernet key is held only in the Django session (<code>session[&quot;vault_keys&quot;]</code>, a map of <code>{public_id: fernet_key_str}</code>). Locking a project (<code>POST /projects/&lt;public_id&gt;/lock</code>) removes that entry, after which secrets cannot be decrypted again until you re-enter the passphrase.</p>
+
+<h3>The API never returns plaintext</h3>
+
+<p>The two machine endpoints hand back ciphertext plus the KDF metadata you need to derive the key yourself &mdash; they never decrypt:</p>
+
+<ul>
+  <li><code>GET /api/secrets</code> &rarr; <code>project_id</code>, <code>kdf</code> (<code>&quot;pbkdf2-sha256&quot;</code>), <code>salt</code>, <code>iterations</code>, and <code>keys</code> (key <em>names</em> only).</li>
+  <li><code>GET /api/secrets/&lt;key&gt;</code> &rarr; the same metadata plus <code>key</code> and <code>ciphertext</code>.</li>
+</ul>
+
+<p>The verifier is <em>not</em> exposed by the API. A client derives the key locally and decrypts; a wrong passphrase surfaces as a Fernet <code>InvalidToken</code> when decrypting a real secret. Decryption mirrors <code>vault/crypto.py</code> exactly &mdash; note the asymmetry: the salt is <strong>standard</strong> base64, but the derived key must be <strong>URL-safe</strong> base64:</p>
+
+<pre><code>import base64, requests
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+def derive_key(passphrase, salt_b64, iterations):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=base64.b64decode(salt_b64),   # salt: STANDARD base64
+        iterations=iterations,             # use the value from the response
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))  # key: URL-SAFE
+
+HEADERS = {&quot;Authorization&quot;: &quot;Bearer dhk_&lt;public_id&gt;_&lt;secret&gt;&quot;}
+r = requests.get(&quot;http://127.0.0.1:8000/api/secrets/DATABASE_URL&quot;, headers=HEADERS).json()
+key = derive_key(passphrase, r[&quot;salt&quot;], r[&quot;iterations&quot;])
+plaintext = Fernet(key).decrypt(r[&quot;ciphertext&quot;].encode()).decode()
+# wrong passphrase -&gt; cryptography.fernet.InvalidToken
+</code></pre>
+
+<h3>API keys are hashed and shown once</h3>
+
+<p>Project API keys have the form <code>dhk_&lt;public_id&gt;_&lt;secret&gt;</code> (and service-account keys <code>dh_live_&lt;public_id&gt;_&lt;secret&gt;</code>). The server stores only a <strong>SHA-256 hash</strong> of the secret half; on each request it re-hashes the presented secret and compares with <code>hmac.compare_digest</code>. Because the raw secret is never persisted, it is displayed exactly once:</p>
+
+<ul>
+  <li>Creating a key (<code>POST /projects/&lt;public_id&gt;/keys/new</code>) stashes the raw token in <code>session[&quot;vault_new_api_key&quot;]</code>.</li>
+  <li>The project detail page pops it and shows a &quot;copy it now&quot; warning box, then it is gone for good. If you lose it, revoke and mint a new one.</li>
+</ul>
+
+<p>Keys can be revoked (<code>.revoke()</code>), and authentication rejects any key whose <code>revoked_at</code> is set or whose <code>expires_at</code> has passed. Authenticating with a <code>dhk_</code> key only authorizes fetching ciphertext and KDF metadata &mdash; it does <strong>not</strong> grant decryption, since the passphrase is required and is never on the server.</p>
+
+<h3>TOTP is mandatory</h3>
+
+<p>A password alone never produces a usable session. Signup creates the account but does <em>not</em> log you in; it sets a half-authenticated marker (<code>session[&quot;totp_pending_user_id&quot;]</code>) and forces you through TOTP enrollment first. Login is the same two-step gate: the password step only sets the pending marker, then routes you to verify your second factor.</p>
+
+<ul>
+  <li>Enrollment confirms a 6-digit TOTP token, then issues <strong>10 one-time backup codes</strong> (a <code>django_otp</code> StaticDevice) shown once, with a Download PDF option.</li>
+  <li>Verification uses <code>django_otp</code> <code>match_token</code>, which accepts a TOTP code <em>or</em> a backup code and enforces clock-drift tolerance and replay protection.</li>
+  <li>Every vault view is decorated with <code>@otp_required</code> (not merely <code>@login_required</code>), so an OTP-verified session is required to reach any project, secret, or key &mdash; a stolen password cannot open the vault.</li>
+</ul>
+
+<p>Backup codes are single-use; store the PDF somewhere safe, because each code works only once.</p>
+    </section>
+</div>
+{% endblock %}

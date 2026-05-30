@@ -1,0 +1,28 @@
+{% extends "accounts/base.html" %}
+{% block title %}Create account — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Create your account</h1>
+    <p class="sub">You'll set up your authenticator app right after.</p>
+    {% if errors %}
+    <div class="error">
+        <ul class="errors-list">
+            {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    <form method="post" action="{% url 'accounts:signup' %}">
+        {% csrf_token %}
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" value="{{ username|default:'' }}" autofocus autocomplete="username">
+        <label for="password1">Password</label>
+        <input type="password" id="password1" name="password1" autocomplete="new-password">
+        <label for="password2">Confirm password</label>
+        <input type="password" id="password2" name="password2" autocomplete="new-password">
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.3rem;">Create account</button>
+    </form>
+    <p class="muted-link" style="margin-top:1.2rem;">Already have an account? <a href="{% url 'accounts:login' %}">Log in</a></p>
+</div>
+</div>
+{% endblock %}

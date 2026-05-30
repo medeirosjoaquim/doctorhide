@@ -1,0 +1,20 @@
+{% extends "accounts/base.html" %}
+{% block title %}Backup codes — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Save your backup codes</h1>
+    {% if codes %}
+    <p class="sub">These one-time codes let you sign in if you lose your authenticator. They're shown <strong>only once</strong> — store them somewhere safe now.</p>
+    <ul class="codes">
+        {% for code in codes %}<li>{{ code }}</li>{% endfor %}
+    </ul>
+    <a class="btn btn-ghost btn-block" href="{% url 'accounts:download_backup_codes' %}" style="margin-top:1rem;">Download PDF</a>
+    <a class="btn btn-primary btn-block" href="{% url 'vault:projects' %}" style="margin-top:0.6rem;">Continue</a>
+    {% else %}
+    <p class="sub">No backup codes to display.</p>
+    <a class="btn btn-primary btn-block" href="{% url 'whoami' %}">Continue</a>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

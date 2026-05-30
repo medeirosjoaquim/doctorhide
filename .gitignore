@@ -1,0 +1,47 @@
+# --- Secrets & environment ---------------------------------------------------
+# Never commit credentials, keys, or local environment files.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+*.secret
+
+# --- Django -------------------------------------------------------------------
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media/
+/staticfiles/
+/static_root/
+
+# --- Python -------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments -----------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
+
+# --- Editors / OS -------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store

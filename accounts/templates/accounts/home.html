@@ -1,0 +1,62 @@
+{% extends "accounts/base.html" %}
+{% block title %}doctorhide — secrets, kept secret{% endblock %}
+{% block body %}
+<style>
+    .hero { padding: 6rem 0 4rem; text-align: center; }
+    .hero .eyebrow {
+        display: inline-block; font-size: 0.8rem; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--accent-2);
+        border: 1px solid var(--border); border-radius: 999px;
+        padding: 0.3rem 0.85rem; margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+        font-size: clamp(2.2rem, 5vw, 3.4rem); line-height: 1.08;
+        margin: 0 0 1.1rem; letter-spacing: -0.02em;
+        background: linear-gradient(135deg, #fff 30%, #b9a8ff);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero p.lead { font-size: 1.15rem; color: var(--muted); max-width: 38rem; margin: 0 auto 2rem; }
+    .hero .cta { display: flex; gap: 0.8rem; justify-content: center; flex-wrap: wrap; }
+    .hero .btn { padding: 0.7rem 1.4rem; font-size: 1rem; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; padding: 1rem 0 5rem; }
+    .feature {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.4rem;
+    }
+    .feature .ico { font-size: 1.5rem; }
+    .feature h3 { margin: 0.6rem 0 0.4rem; font-size: 1.05rem; }
+    .feature p { margin: 0; color: var(--muted); font-size: 0.93rem; }
+</style>
+<main class="container">
+    <section class="hero">
+        <span class="eyebrow">Secrets management</span>
+        <h1>Store your secrets.<br>Hand out access, not passwords.</h1>
+        <p class="lead">
+            doctorhide keeps credentials encrypted and out of your code. People sign in with
+            a password and an authenticator app; your apps fetch what they need with scoped
+            API keys.
+        </p>
+        <div class="cta">
+            <a class="btn btn-primary" href="{% url 'accounts:signup' %}">Get started</a>
+            <a class="btn btn-ghost" href="{% url 'accounts:login' %}">Log in</a>
+        </div>
+    </section>
+    <section class="features">
+        <div class="feature">
+            <div class="ico">🔑</div>
+            <h3>Scoped API keys</h3>
+            <p>Each app gets its own key tied to a service account — revoke one without touching the rest.</p>
+        </div>
+        <div class="feature">
+            <div class="ico">📱</div>
+            <h3>Required 2FA</h3>
+            <p>Every human login is protected by a time-based authenticator code, with backup codes for recovery.</p>
+        </div>
+        <div class="feature">
+            <div class="ico">🛡️</div>
+            <h3>Hashed at rest</h3>
+            <p>Key secrets are shown once and never stored in the clear — a database leak exposes nothing usable.</p>
+        </div>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}doctorhide{% endblock %}</title>
+    <style>
+        :root {
+            --bg: #0e1014;
+            --surface: #161a22;
+            --surface-2: #1e2330;
+            --border: #2a3140;
+            --text: #e7eaf0;
+            --muted: #99a2b3;
+            --accent: #7c5cff;
+            --accent-2: #4dd0e1;
+            --danger: #ff6b6b;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.55;
+        }
+        a { color: inherit; }
+
+        /* Topbar */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: rgba(14, 16, 20, 0.8);
+            backdrop-filter: blur(8px);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-decoration: none;
+            letter-spacing: -0.01em;
+        }
+        .brand .dot {
+            width: 1.6rem; height: 1.6rem;
+            border-radius: 6px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.95rem;
+        }
+        .nav { display: flex; align-items: center; gap: 0.5rem; }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            padding: 0.55rem 1.05rem;
+            border-radius: 8px;
+            font-size: 0.93rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: transform .04s ease, background .15s ease, border-color .15s ease;
+        }
+        .btn:active { transform: translateY(1px); }
+        .btn-ghost { color: var(--text); border-color: var(--border); background: transparent; }
+        .btn-ghost:hover { border-color: var(--accent); }
+        .btn-primary { color: #fff; background: linear-gradient(135deg, var(--accent), #6a48ff); }
+        .btn-primary:hover { filter: brightness(1.08); }
+        .btn-block { width: 100%; }
+
+        /* Generic page wrapper */
+        .container { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem; }
+
+        /* Auth card */
+        .card-wrap { display: flex; justify-content: center; padding: 4rem 1.5rem; }
+        .card {
+            width: 100%; max-width: 26rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+        }
+        .card h1 { margin: 0 0 0.4rem; font-size: 1.4rem; }
+        .card p.sub { margin: 0 0 1.4rem; color: var(--muted); }
+        label { display: block; margin: 0.9rem 0 0.35rem; font-size: 0.88rem; color: var(--muted); }
+        input[type=text], input[type=password] {
+            width: 100%; padding: 0.65rem 0.75rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 0.95rem;
+        }
+        input:focus { outline: none; border-color: var(--accent); }
+        /* Password field with a left-side eye toggle */
+        .pw-field { position: relative; }
+        .pw-field input { padding-left: 2.4rem; }
+        .pw-toggle {
+            position: absolute; left: 0.5rem; top: 50%; transform: translateY(-50%);
+            display: inline-flex; align-items: center; justify-content: center;
+            background: none; border: none; padding: 0.2rem; margin: 0;
+            color: var(--muted); cursor: pointer;
+        }
+        .pw-toggle:hover { color: var(--text); }
+        .pw-toggle svg { width: 18px; height: 18px; display: block; }
+        .error {
+            color: var(--danger);
+            background: rgba(255, 107, 107, 0.08);
+            border: 1px solid rgba(255, 107, 107, 0.25);
+            padding: 0.6rem 0.75rem; border-radius: 8px;
+            margin: 0 0 1rem; font-size: 0.9rem;
+        }
+        .errors-list { margin: 0; padding-left: 1.1rem; }
+        .muted-link { color: var(--muted); font-size: 0.9rem; text-decoration: none; }
+        .muted-link a { color: var(--accent); text-decoration: none; }
+        .codes { font-family: ui-monospace, monospace; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+        .codes li { margin: 0.25rem 0; }
+        img.qr { display: block; margin: 1.2rem auto; border-radius: 8px; background: #fff; padding: 8px; }
+        details summary { cursor: pointer; color: var(--muted); margin-top: 0.8rem; }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="{% url 'accounts:home' %}">
+            <span class="dot">🔐</span> doctorhide
+        </a>
+        <nav class="nav">
+            {% if request.user.is_authenticated %}
+                <a class="btn btn-ghost" href="{% url 'vault:projects' %}">Projects</a>
+                <a class="btn btn-primary" href="{% url 'accounts:logout' %}">Log out</a>
+            {% else %}
+                <a class="btn btn-ghost" href="{% url 'accounts:login' %}">Log in</a>
+                <a class="btn btn-primary" href="{% url 'accounts:signup' %}">Sign up</a>
+            {% endif %}
+        </nav>
+    </header>
+    {% block body %}{% endblock %}
+    <script>
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.pw-toggle');
+            if (!btn) return;
+            var input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.querySelector('.eye').hidden = show;
+            btn.querySelector('.eye-off').hidden = !show;
+        });
+    </script>
+</body>
+</html>
