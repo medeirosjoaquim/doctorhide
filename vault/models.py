@@ -155,3 +155,33 @@ class ProjectAPIKey(models.Model):
         if self.revoked_at is None:
             self.revoked_at = timezone.now()
             self.save(update_fields=["revoked_at"])
+
+
+class AuditEvent(models.Model):
+    """Append-only record of vault access and mutations.
+
+    Rows are write-once: there is no update or delete path. The principal is
+    recorded as a free-text label (the API key prefix) because the API
+    authenticates a project, not a user. The project FK uses SET_NULL so
+    deleting a project does not erase its access history.
+    """
+
+    principal = models.CharField(max_length=120, blank=True, default="")
+    action = models.CharField(max_length=64)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+    )
+    secret_key = models.CharField(max_length=255, blank=True, default="")
+    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    outcome = models.CharField(max_length=32, default="")
+
+    class Meta:
+        ordering = ("-timestamp",)
+
+    def __str__(self):
+        return f"{self.action}:{self.outcome}"

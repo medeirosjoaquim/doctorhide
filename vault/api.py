@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from .authentication import ProjectAPIKeyAuthentication
 from .models import Secret
+from . import audit
 
 CHARSET_TYPES = {
     "lower": string.ascii_lowercase,
@@ -81,6 +82,7 @@ def secrets_list(request):
     data["keys"] = list(
         keys.values_list("key", flat=True)[offset : offset + limit]
     )
+    audit.record(request, "secret.list", "success", project=project)
     return Response(data)
 
 
@@ -180,6 +182,13 @@ def _write_secret(request, key, require_new):
         secret.tags = tags
     secret.deleted_at = None
     secret.save()
+    audit.record(
+        request,
+        "secret.create" if created else "secret.update",
+        "success",
+        project=project,
+        secret_key=key,
+    )
     return Response(_secret_data(project, secret), status=201 if created else 200)
 
 
@@ -198,10 +207,14 @@ def secret_detail(request, key):
         return _write_secret(request, key, require_new=False)
     secret = project.secrets.filter(key=key, deleted_at__isnull=True).first()
     if secret is None:
+        action = "secret.delete" if request.method == "DELETE" else "secret.read"
+        audit.record(request, action, "denied", project=project, secret_key=key)
         return Response({"detail": "Not found."}, status=404)
     if request.method == "DELETE":
         secret.soft_delete()
+        audit.record(request, "secret.delete", "success", project=project, secret_key=key)
         return Response(status=204)
+    audit.record(request, "secret.read", "success", project=project, secret_key=key)
     return Response(_secret_data(project, secret))
 
 
@@ -236,8 +249,10 @@ def secret_restore(request, key):
     project = request.user
     secret = project.secrets.filter(key=key, deleted_at__isnull=False).first()
     if secret is None:
+        audit.record(request, "secret.restore", "denied", project=project, secret_key=key)
         return Response({"detail": "Not found."}, status=404)
     secret.restore()
+    audit.record(request, "secret.restore", "success", project=project, secret_key=key)
     data = _project_meta(project)
     data["key"] = secret.key
     return Response(data)
@@ -252,8 +267,10 @@ def secret_force_delete(request, key):
     project = request.user
     secret = project.secrets.filter(key=key).first()
     if secret is None:
+        audit.record(request, "secret.force_delete", "denied", project=project, secret_key=key)
         return Response({"detail": "Not found."}, status=404)
     secret.delete()
+    audit.record(request, "secret.force_delete", "success", project=project, secret_key=key)
     return Response(status=204)
 
 
