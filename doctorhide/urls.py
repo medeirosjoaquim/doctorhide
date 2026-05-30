@@ -25,6 +25,7 @@ from .health import healthz, readyz
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('accounts.urls')),
+    path('', include('organizations.urls')),
     path('', include('vault.urls')),
     path('api/', include('vault.api_urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

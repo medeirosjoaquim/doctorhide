@@ -1,0 +1,93 @@
+{% extends "accounts/base.html" %}
+{% block title %}Members — doctorhide{% endblock %}
+{% block body %}
+<style>
+    .page { max-width: 760px; margin: 3rem auto; padding: 0 1.5rem; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .page-head h1 { margin: 0; font-size: 1.6rem; }
+    .member-list { display: grid; gap: 0.8rem; }
+    .member {
+        display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1rem 1.3rem;
+    }
+    .member .name { font-weight: 600; }
+    .member .role { color: var(--muted); font-size: 0.85rem; }
+    .member-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .member-actions select {
+        padding: 0.45rem 0.6rem; background: var(--surface-2);
+        border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    }
+    .invite { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.3rem; margin-bottom: 1.5rem; }
+    .invite h2 { margin: 0 0 0.8rem; font-size: 1.1rem; }
+    .invite .row { display: flex; gap: 0.6rem; align-items: flex-end; }
+    .invite .row > div { flex: 1; }
+    .invite select { width: 100%; padding: 0.65rem 0.75rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+    .msg { padding: 0.6rem 0.75rem; border-radius: 8px; margin: 0 0 0.6rem; font-size: 0.9rem; }
+    .msg.error { color: var(--danger); background: rgba(255,107,107,0.08); border: 1px solid rgba(255,107,107,0.25); }
+    .msg.success { color: var(--accent-2); background: rgba(77,208,225,0.08); border: 1px solid rgba(77,208,225,0.25); }
+    .btn-danger { color: #fff; background: var(--danger); }
+</style>
+<div class="page">
+    <div class="page-head">
+        <h1>{{ organization.name }} · Members</h1>
+        <a class="btn btn-ghost" href="{% url 'organizations:list' %}">Organizations</a>
+    </div>
+
+    {% for message in messages %}
+    <div class="msg {{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+
+    {% if can_manage %}
+    <div class="invite">
+        <h2>Invite an existing user</h2>
+        <form method="post" action="{% url 'organizations:member_invite' %}">
+            {% csrf_token %}
+            <div class="row">
+                <div>
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" autocomplete="off">
+                </div>
+                <div>
+                    <label for="role">Role</label>
+                    <select id="role" name="role">
+                        <option value="member">Member</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Invite</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="member-list">
+        {% for m in members %}
+        <div class="member">
+            <span>
+                <span class="name">{{ m.user.get_username }}</span>
+                <br><span class="role">{{ m.get_role_display }}</span>
+            </span>
+            {% if can_manage %}
+            <div class="member-actions">
+                <form method="post" action="{% url 'organizations:member_role' membership_id=m.id %}">
+                    {% csrf_token %}
+                    <select name="role">
+                        {% for value, label in assignable_roles %}
+                        <option value="{{ value }}"{% if value == m.role %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-ghost">Save</button>
+                </form>
+                <form method="post" action="{% url 'organizations:member_remove' membership_id=m.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Remove</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

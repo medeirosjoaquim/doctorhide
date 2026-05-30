@@ -1,0 +1,42 @@
+{% extends "accounts/base.html" %}
+{% block title %}Organizations — doctorhide{% endblock %}
+{% block body %}
+<style>
+    .page { max-width: 760px; margin: 3rem auto; padding: 0 1.5rem; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .page-head h1 { margin: 0; font-size: 1.6rem; }
+    .org-list { display: grid; gap: 0.8rem; }
+    .org {
+        display: flex; align-items: center; justify-content: space-between;
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 1.1rem 1.3rem;
+    }
+    .org .role { color: var(--muted); font-size: 0.85rem; }
+    .org.current { border-color: var(--accent); }
+    .badge { color: var(--accent-2); font-size: 0.8rem; font-weight: 600; }
+</style>
+<div class="page">
+    <div class="page-head">
+        <h1>Organizations</h1>
+        <a class="btn btn-ghost" href="{% url 'organizations:members' %}">Members</a>
+    </div>
+    <div class="org-list">
+        {% for m in memberships %}
+        <div class="org{% if m.organization.id == current.id %} current{% endif %}">
+            <span>
+                <strong>{{ m.organization.name }}</strong>
+                <br><span class="role">{{ m.get_role_display }}</span>
+            </span>
+            {% if m.organization.id == current.id %}
+            <span class="badge">Current</span>
+            {% else %}
+            <form method="post" action="{% url 'organizations:switch' org_id=m.organization.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">Switch</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
