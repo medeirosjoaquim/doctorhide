@@ -127,6 +127,15 @@ DATABASES = {
 # Overridable by SESSION_ENGINE env var for special cases (e.g., Redis in prod).
 SESSION_ENGINE = os.environ.get('SESSION_ENGINE', 'django.contrib.sessions.backends.db')
 
+# Caching: in-memory local cache by default for dev/test. Override with Redis
+# or other backend in production via CACHE_BACKEND env var if needed.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'doctorhide-cache',
+    }
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators

@@ -1,4 +1,8 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from organizations.models import Organization
@@ -225,3 +229,83 @@ class AuditEventOrganizationTests(APITestCase):
     def test_organization_optional(self):
         ev = AuditEvent.objects.create(action="read")
         self.assertIsNone(ev.organization_id)
+
+
+class ProjectAPIKeyLastUsedAtThrottlingTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="alice", password="pw")
+        self.project, self.key = make_project(self.user)
+        Secret.objects.create(
+            project=self.project, key="gmail.com", ciphertext=crypto.encrypt(self.key, "abc123")
+        )
+        self.api_key, self.token = ProjectAPIKey.generate(self.project)
+        self.client = APIClient()
+
+    def tearDown(self):
+        cache.clear()
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+    def test_first_authentication_records_usage(self):
+        """First API call should record last_used_at."""
+        self.assertIsNone(self.api_key.last_used_at)
+        self._auth()
+        self.client.get("/api/secrets/gmail.com")
+        self.api_key.refresh_from_db()
+        self.assertIsNotNone(self.api_key.last_used_at)
+
+    def test_recent_authentication_skips_db_write(self):
+        """If last_used_at is recent, a new authentication should skip the DB write."""
+        # Set last_used_at to now
+        now = timezone.now()
+        self.api_key.last_used_at = now
+        self.api_key.save()
+        cache.clear()
+
+        # Make request
+        self._auth()
+        self.client.get("/api/secrets/gmail.com")
+
+        # last_used_at should not have changed (within a second)
+        self.api_key.refresh_from_db()
+        self.assertAlmostEqual(
+            (self.api_key.last_used_at - now).total_seconds(),
+            0,
+            delta=1
+        )
+
+    def test_old_authentication_updates_usage(self):
+        """If last_used_at is old, a new authentication should update it."""
+        # Set last_used_at to 2 hours ago
+        old_time = timezone.now() - timedelta(hours=2)
+        self.api_key.last_used_at = old_time
+        self.api_key.save()
+        cache.clear()
+
+        # Make request
+        self._auth()
+        self.client.get("/api/secrets/gmail.com")
+
+        # last_used_at should have been updated
+        self.api_key.refresh_from_db()
+        self.assertGreater(self.api_key.last_used_at, old_time)
+
+    def test_throttle_caching_prevents_duplicate_writes(self):
+        """Multiple rapid requests should only write to DB once per throttle period."""
+        self._auth()
+
+        # First request: writes to DB
+        self.client.get("/api/secrets/gmail.com")
+        self.api_key.refresh_from_db()
+        first_last_used = self.api_key.last_used_at
+        self.assertIsNotNone(first_last_used)
+
+        # Immediately make another request
+        self.client.get("/api/secrets/gmail.com")
+        self.api_key.refresh_from_db()
+        second_last_used = self.api_key.last_used_at
+
+        # last_used_at should not have changed (same value)
+        self.assertEqual(first_last_used, second_last_used)

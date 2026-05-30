@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
@@ -95,3 +96,77 @@ class WhoamiTests(APITestCase):
         client = APIClient()
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
         self.assertEqual(client.get("/whoami").status_code, 401)
+
+
+class APIKeyLastUsedAtThrottlingTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username="alice", password="pw")
+        self.sa = ServiceAccount.objects.create(name="billing-api", created_by=self.user)
+        self.key, self.token = APIKey.generate(self.sa)
+        self.client = APIClient()
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_first_authentication_records_usage(self):
+        """First API call should record last_used_at."""
+        self.assertIsNone(self.key.last_used_at)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.client.get("/whoami")
+        self.key.refresh_from_db()
+        self.assertIsNotNone(self.key.last_used_at)
+
+    def test_recent_authentication_skips_db_write(self):
+        """If last_used_at is recent, a new authentication should skip the DB write."""
+        # Set last_used_at to now
+        now = timezone.now()
+        self.key.last_used_at = now
+        self.key.save()
+        cache.clear()
+
+        # Make request and capture the updated timestamp
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.client.get("/whoami")
+
+        # last_used_at should not have changed (within a second)
+        self.key.refresh_from_db()
+        self.assertAlmostEqual(
+            (self.key.last_used_at - now).total_seconds(),
+            0,
+            delta=1
+        )
+
+    def test_old_authentication_updates_usage(self):
+        """If last_used_at is old, a new authentication should update it."""
+        # Set last_used_at to 2 hours ago
+        old_time = timezone.now() - timedelta(hours=2)
+        self.key.last_used_at = old_time
+        self.key.save()
+        cache.clear()
+
+        # Make request
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        self.client.get("/whoami")
+
+        # last_used_at should have been updated
+        self.key.refresh_from_db()
+        self.assertGreater(self.key.last_used_at, old_time)
+
+    def test_throttle_caching_prevents_duplicate_writes(self):
+        """Multiple rapid requests should only write to DB once per throttle period."""
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+        # First request: writes to DB
+        self.client.get("/whoami")
+        self.key.refresh_from_db()
+        first_last_used = self.key.last_used_at
+        self.assertIsNotNone(first_last_used)
+
+        # Immediately make another request
+        self.client.get("/whoami")
+        self.key.refresh_from_db()
+        second_last_used = self.key.last_used_at
+
+        # last_used_at should not have changed (same value)
+        self.assertEqual(first_last_used, second_last_used)
