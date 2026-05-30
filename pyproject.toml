@@ -1,0 +1,62 @@
+[project]
+name = "doctorhide"
+version = "0.1.0"
+description = "Django 6 + DRF zero-knowledge secrets manager"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "C901",   # mccabe
+    "B",      # flake8-bugbear
+    "C",      # flake8-comprehensions
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+]
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    ".tox",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["doctorhide", "accounts", "iam", "vault", "organizations", "billing"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+plugins = [
+    "mypy_django_plugin.main",
+    "mypy_drf_plugin.main",
+]
+
+[tool.django-stubs]
+django_settings_module = "doctorhide.settings"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "doctorhide.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["accounts", "iam", "vault", "organizations", "billing"]
+addopts = "--cov=. --cov-report=html --cov-report=term-missing --cov-branch --cov-fail-under=0"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+norecursedirs = [".git", ".venv", "venv", "__pycache__", "*.egg-info"]
