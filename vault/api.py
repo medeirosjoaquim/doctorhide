@@ -83,6 +83,7 @@ def _secret_data(project, secret):
     data = _project_meta(project)
     data["key"] = secret.key
     data["ciphertext"] = secret.ciphertext
+    data["payload_type"] = secret.payload_type
     return data
 
 
@@ -111,7 +112,13 @@ def secrets_batch_get(request):
     }
     data = _project_meta(project)
     data["secrets"] = [
-        {"key": k, "ciphertext": found[k].ciphertext} for k in keys if k in found
+        {
+            "key": k,
+            "ciphertext": found[k].ciphertext,
+            "payload_type": found[k].payload_type,
+        }
+        for k in keys
+        if k in found
     ]
     data["missing"] = [k for k in keys if k not in found]
     return Response(data)
@@ -132,6 +139,14 @@ def _write_secret(request, key, require_new):
     ciphertext = request.data.get("ciphertext")
     if not ciphertext:
         return Response({"detail": "ciphertext is required."}, status=400)
+    payload_type = request.data.get("payload_type", Secret.PAYLOAD_STRING)
+    valid_payload_types = {c[0] for c in Secret.PAYLOAD_TYPE_CHOICES}
+    if payload_type not in valid_payload_types:
+        return Response(
+            {"detail": "payload_type must be one of: "
+                       + ", ".join(sorted(valid_payload_types)) + "."},
+            status=400,
+        )
     token = request.data.get("ClientRequestToken") or None
 
     secret = project.secrets.filter(key=key).first()
@@ -147,6 +162,7 @@ def _write_secret(request, key, require_new):
     if created:
         secret = Secret(project=project, key=key)
     secret.ciphertext = ciphertext
+    secret.payload_type = payload_type
     secret.idempotency_token = token
     secret.deleted_at = None
     secret.save()
@@ -189,6 +205,7 @@ def secret_describe(request, key):
     return Response(
         {
             "key": secret.key,
+            "payload_type": secret.payload_type,
             "created_at": secret.created_at,
             "updated_at": secret.updated_at,
             "deleted_at": secret.deleted_at,

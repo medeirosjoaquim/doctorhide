@@ -54,9 +54,19 @@ class Secret(models.Model):
     """A key/value pair, e.g. key='gmail.com', value='abc123'. Only the encrypted
     value (ciphertext) is stored."""
 
+    PAYLOAD_STRING = "string"
+    PAYLOAD_BINARY = "binary"
+    PAYLOAD_TYPE_CHOICES = [
+        (PAYLOAD_STRING, "string"),
+        (PAYLOAD_BINARY, "binary"),
+    ]
+
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="secrets")
     key = models.CharField(max_length=255)
     ciphertext = models.TextField()
+    payload_type = models.CharField(
+        max_length=16, choices=PAYLOAD_TYPE_CHOICES, default=PAYLOAD_STRING
+    )
     idempotency_token = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
