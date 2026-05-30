@@ -94,3 +94,59 @@ class SecretsAPITests(APITestCase):
         self.api_key.revoke()
         self._auth()
         self.assertEqual(self.client.get("/api/secrets/gmail.com").status_code, 401)
+
+
+class GeneratePasswordAPITests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alice", password="pw")
+        self.project, self.key = make_project(self.user)
+        self.api_key, self.token = ProjectAPIKey.generate(self.project)
+        self.client = APIClient()
+
+    def _auth(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+
+    def test_unauthenticated_rejected(self):
+        self.assertEqual(self.client.get("/api/generate-password").status_code, 401)
+
+    def test_default_generates_value(self):
+        self._auth()
+        res = self.client.get("/api/generate-password")
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["length"], 24)
+        self.assertEqual(len(body["value"]), 24)
+
+    def test_value_is_not_persisted(self):
+        self._auth()
+        before = Secret.objects.count()
+        self.client.get("/api/generate-password")
+        self.assertEqual(Secret.objects.count(), before)
+
+    def test_custom_length(self):
+        self._auth()
+        res = self.client.get("/api/generate-password?length=40")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.json()["value"]), 40)
+
+    def test_length_out_of_range_rejected(self):
+        self._auth()
+        self.assertEqual(self.client.get("/api/generate-password?length=4").status_code, 400)
+
+    def test_exclude_characters(self):
+        self._auth()
+        res = self.client.get("/api/generate-password?exclude=abcdef&length=60")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(any(c in "abcdef" for c in res.json()["value"]))
+
+    def test_require_types(self):
+        self._auth()
+        res = self.client.get("/api/generate-password?require-types=digits&length=12")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["value"].isdigit())
+
+    def test_unknown_require_type_rejected(self):
+        self._auth()
+        self.assertEqual(
+            self.client.get("/api/generate-password?require-types=emoji").status_code, 400
+        )
