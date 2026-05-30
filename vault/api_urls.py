@@ -22,6 +22,11 @@ urlpatterns = [
         name="api_secret_describe",
     ),
     re_path(
+        r"^secrets/(?P<key>.+)/rotate$",
+        api.secret_rotate,
+        name="api_secret_rotate",
+    ),
+    re_path(
         r"^secrets/(?P<key>.+)/restore$",
         api.secret_restore,
         name="api_secret_restore",

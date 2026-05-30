@@ -361,6 +361,44 @@ def secret_restore_version(request, key, version_id):
     return Response(data)
 
 
+@api_view(["POST"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated, ProjectInOrganization])
+@throttle_classes([ProjectRateThrottle])
+def secret_rotate(request, key):
+    """Rotate a secret by promoting new client-encrypted ciphertext to current
+    while archiving the prior version. Zero-knowledge is preserved: plaintext
+    is never accepted, only client-encrypted ciphertext."""
+    project = request.user
+    if "plaintext" in request.data:
+        return Response(
+            {"detail": "Plaintext is not accepted; send client-encrypted ciphertext."},
+            status=400,
+        )
+    ciphertext = request.data.get("ciphertext")
+    if not ciphertext:
+        return Response({"detail": "ciphertext is required."}, status=400)
+
+    secret = project.secrets.filter(key=key, deleted_at__isnull=True).first()
+    if secret is None:
+        audit.record(request, "secret.rotate", "denied", project=project, secret_key=key)
+        return Response({"detail": "Not found."}, status=404)
+
+    # Update the secret with new ciphertext
+    secret.ciphertext = ciphertext
+    secret.save()
+
+    # Create a new version for the rotated ciphertext
+    SecretVersion.objects.create(
+        secret=secret,
+        ciphertext=ciphertext,
+        label="rotated",
+    )
+
+    audit.record(request, "secret.rotate", "success", project=project, secret_key=key)
+    return Response(_secret_data(project, secret))
+
+
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated, ProjectInOrganization])
