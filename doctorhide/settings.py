@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'iam',
     'organizations',
     'vault',
+    'billing',
 ]
 
 MIDDLEWARE = [
