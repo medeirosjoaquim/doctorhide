@@ -112,8 +112,20 @@ DATABASES = {
         # In docker-compose, set POSTGRES_HOST=db and POSTGRES_PORT=5432 via env.
         'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
         'PORT': os.environ.get('POSTGRES_PORT', '5433'),
+        # Connection pooling: CONN_MAX_AGE in seconds (0 = close after each request,
+        # -1 = persistent connections, >0 = reuse within N seconds).
+        # Set from env for prod; 0 for dev/test by default to avoid stale connections.
+        'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '0')),
+        # Health checks: verify connection is alive before each request. Prevents
+        # "server closed the connection unexpectedly" errors in long-lived pools.
+        # Set from env for prod; False by default in dev/test.
+        'CONN_HEALTH_CHECKS': os.environ.get('DB_CONN_HEALTH_CHECKS', '').lower() in ('1', 'true', 'yes'),
     }
 }
+
+# Session engine: store sessions in the database for multi-host correctness.
+# Overridable by SESSION_ENGINE env var for special cases (e.g., Redis in prod).
+SESSION_ENGINE = os.environ.get('SESSION_ENGINE', 'django.contrib.sessions.backends.db')
 
 
 # Password validation
