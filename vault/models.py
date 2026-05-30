@@ -57,6 +57,7 @@ class Secret(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="secrets")
     key = models.CharField(max_length=255)
     ciphertext = models.TextField()
+    idempotency_token = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)

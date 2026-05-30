@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .authentication import ProjectAPIKeyAuthentication
+from .models import Secret
 
 CHARSET_TYPES = {
     "lower": string.ascii_lowercase,
@@ -43,24 +44,69 @@ def secrets_list(request):
     return Response(data)
 
 
-@api_view(["GET", "DELETE"])
+def _secret_data(project, secret):
+    data = _project_meta(project)
+    data["key"] = secret.key
+    data["ciphertext"] = secret.ciphertext
+    return data
+
+
+def _write_secret(request, key, require_new):
+    """Create (POST) or upsert (PUT) a secret from client-supplied ciphertext.
+
+    Zero-knowledge: only ciphertext is accepted — a plaintext field is rejected.
+    An optional ClientRequestToken makes retries idempotent: replaying the same
+    token for the same key returns the stored secret without re-applying."""
+    project = request.user
+    if "plaintext" in request.data:
+        return Response(
+            {"detail": "Plaintext is not accepted; send client-encrypted ciphertext."},
+            status=400,
+        )
+    ciphertext = request.data.get("ciphertext")
+    if not ciphertext:
+        return Response({"detail": "ciphertext is required."}, status=400)
+    token = request.data.get("ClientRequestToken") or None
+
+    secret = project.secrets.filter(key=key).first()
+    if secret is not None and token and secret.idempotency_token == token:
+        # Idempotent replay: do nothing, return the existing secret.
+        return Response(_secret_data(project, secret), status=200)
+    if require_new and secret is not None:
+        return Response(
+            {"detail": "Secret already exists; use PUT to update."}, status=409
+        )
+
+    created = secret is None
+    if created:
+        secret = Secret(project=project, key=key)
+    secret.ciphertext = ciphertext
+    secret.idempotency_token = token
+    secret.deleted_at = None
+    secret.save()
+    return Response(_secret_data(project, secret), status=201 if created else 200)
+
+
+@api_view(["GET", "POST", "PUT", "DELETE"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
 def secret_detail(request, key):
     """GET returns the encrypted value for one key; the client derives the key
     from the passphrase + salt and decrypts locally — plaintext never leaves
-    here. DELETE soft-deletes the secret, keeping it recoverable for a window."""
+    here. POST creates and PUT upserts the encrypted value. DELETE soft-deletes
+    the secret, keeping it recoverable for a window."""
     project = request.user
+    if request.method == "POST":
+        return _write_secret(request, key, require_new=True)
+    if request.method == "PUT":
+        return _write_secret(request, key, require_new=False)
     secret = project.secrets.filter(key=key, deleted_at__isnull=True).first()
     if secret is None:
         return Response({"detail": "Not found."}, status=404)
     if request.method == "DELETE":
         secret.soft_delete()
         return Response(status=204)
-    data = _project_meta(project)
-    data["key"] = secret.key
-    data["ciphertext"] = secret.ciphertext
-    return Response(data)
+    return Response(_secret_data(project, secret))
 
 
 @api_view(["POST"])
