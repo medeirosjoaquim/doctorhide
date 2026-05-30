@@ -168,3 +168,15 @@ REST_FRAMEWORK = {
 
 # Label shown in the authenticator app (e.g. Google Authenticator).
 OTP_TOTP_ISSUER = 'doctorhide'
+
+
+# Production-only HTTPS hardening. Off in dev/test so the suite and local
+# servers work over plain HTTP without extra env vars.
+if os.environ.get('DJANGO_ENV') == 'production':
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
