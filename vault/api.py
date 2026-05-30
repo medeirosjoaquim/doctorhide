@@ -51,6 +51,37 @@ def _secret_data(project, secret):
     return data
 
 
+@api_view(["GET", "POST"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated])
+def secrets_batch_get(request):
+    """Return ciphertext + metadata for several keys in one request. Keys come
+    from a JSON list body (POST {"keys": [...]}) or repeated ?key= query params
+    (GET). Like the single-secret read, plaintext never leaves here — only the
+    client-encrypted ciphertext is returned. Missing or soft-deleted keys are
+    reported separately rather than failing the whole request."""
+    project = request.user
+    if request.method == "POST":
+        keys = request.data.get("keys")
+    else:
+        keys = request.query_params.getlist("key")
+    if not isinstance(keys, (list, tuple)) or not keys:
+        return Response(
+            {"detail": "keys is required and must be a non-empty list."}, status=400
+        )
+
+    found = {
+        s.key: s
+        for s in project.secrets.filter(key__in=keys, deleted_at__isnull=True)
+    }
+    data = _project_meta(project)
+    data["secrets"] = [
+        {"key": k, "ciphertext": found[k].ciphertext} for k in keys if k in found
+    ]
+    data["missing"] = [k for k in keys if k not in found]
+    return Response(data)
+
+
 def _write_secret(request, key, require_new):
     """Create (POST) or upsert (PUT) a secret from client-supplied ciphertext.
 
