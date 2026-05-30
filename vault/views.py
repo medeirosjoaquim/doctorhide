@@ -11,7 +11,7 @@ from organizations.models import (
 )
 
 from . import crypto
-from .models import Project, ProjectAPIKey, Secret
+from .models import Project, ProjectAPIKey, Secret, SecretVersion
 
 SESSION_KEYS = "vault_keys"  # {public_id: fernet_key_str} for unlocked projects
 NEW_API_KEY_SESSION = "vault_new_api_key"
@@ -212,3 +212,55 @@ def api_key_revoke(request, public_id, key_id):
         if api_key:
             api_key.revoke()
     return redirect("vault:detail", public_id=public_id)
+
+
+@otp_required
+def secret_versions(request, public_id, secret_id):
+    project = _get_project(request, public_id)
+    key = _unlocked_key(request, project)
+    secret = project.secrets.filter(id=secret_id).first()
+    if secret is None:
+        raise Http404("Secret not found.")
+
+    versions = []
+    if key is not None:
+        reveal_id = request.GET.get("reveal")
+        for version in secret.versions.all():
+            value = None
+            if str(version.id) == reveal_id:
+                value = crypto.decrypt(key, version.ciphertext)
+            versions.append({"obj": version, "value": value})
+
+    return render(
+        request,
+        "vault/secret_versions.html",
+        {
+            "project": project,
+            "secret": secret,
+            "unlocked": key is not None,
+            "versions": versions,
+        },
+    )
+
+
+@otp_required
+def secret_version_restore(request, public_id, secret_id, version_id):
+    project = _get_project(request, public_id, required_role=Membership.ROLE_MEMBER)
+    secret = project.secrets.filter(id=secret_id).first()
+    if secret is None:
+        raise Http404("Secret not found.")
+
+    if request.method == "POST":
+        version = secret.versions.filter(id=version_id).first()
+        if version:
+            # Restore by updating the secret's ciphertext and creating a new version.
+            secret.ciphertext = version.ciphertext
+            secret.save(update_fields=["ciphertext"])
+            SecretVersion.objects.create(
+                secret=secret,
+                ciphertext=version.ciphertext,
+                label=f"Restored from v{version.id}",
+            )
+            messages.success(request, "Version restored.")
+
+    return redirect("vault:secret_versions", public_id=public_id, secret_id=secret_id)

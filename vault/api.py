@@ -14,7 +14,7 @@ from organizations.permissions import ProjectInOrganization
 
 from .authentication import ProjectAPIKeyAuthentication
 from .throttling import ProjectRateThrottle
-from .models import Secret
+from .models import Secret, SecretVersion
 from . import audit
 
 CHARSET_TYPES = {
@@ -188,6 +188,14 @@ def _write_secret(request, key, require_new):
         secret.tags = tags
     secret.deleted_at = None
     secret.save()
+
+    # Create a new version on every write (create or update).
+    SecretVersion.objects.create(
+        secret=secret,
+        ciphertext=ciphertext,
+        label="",
+    )
+
     audit.record(
         request,
         "secret.create" if created else "secret.update",
@@ -282,6 +290,75 @@ def secret_force_delete(request, key):
     secret.delete()
     audit.record(request, "secret.force_delete", "success", project=project, secret_key=key)
     return Response(status=204)
+
+
+@api_view(["GET"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated, ProjectInOrganization])
+@throttle_classes([ProjectRateThrottle])
+def secret_list_versions(request, key):
+    """List all versions of a secret, ordered by creation time (newest first).
+
+    Includes version ID, creation timestamp, and optional label. Does not include
+    ciphertext (use describe or restore to access that)."""
+    project = request.user
+    secret = project.secrets.filter(key=key).first()
+    if secret is None:
+        audit.record(request, "secret.list_versions", "denied", project=project, secret_key=key)
+        return Response({"detail": "Not found."}, status=404)
+
+    versions = secret.versions.all()
+    data = _project_meta(project)
+    data["key"] = secret.key
+    data["versions"] = [
+        {
+            "version_id": v.id,
+            "created_at": v.created_at,
+            "label": v.label,
+        }
+        for v in versions
+    ]
+    audit.record(request, "secret.list_versions", "success", project=project, secret_key=key)
+    return Response(data)
+
+
+@api_view(["POST"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated, ProjectInOrganization])
+@throttle_classes([ProjectRateThrottle])
+def secret_restore_version(request, key, version_id):
+    """Restore a specific version of a secret.
+
+    Sets the secret's ciphertext to the version's ciphertext, and creates a new
+    version record (so the restore itself becomes a version in the history)."""
+    project = request.user
+    secret = project.secrets.filter(key=key).first()
+    if secret is None:
+        audit.record(request, "secret.restore_version", "denied", project=project, secret_key=key)
+        return Response({"detail": "Not found."}, status=404)
+
+    try:
+        version = secret.versions.get(id=version_id)
+    except SecretVersion.DoesNotExist:
+        audit.record(request, "secret.restore_version", "denied", project=project, secret_key=key)
+        return Response({"detail": "Version not found."}, status=404)
+
+    # Restore the version by setting the secret's ciphertext and creating a new version record.
+    secret.ciphertext = version.ciphertext
+    secret.save()
+
+    SecretVersion.objects.create(
+        secret=secret,
+        ciphertext=version.ciphertext,
+        label=f"Restored from v{version.id}",
+    )
+
+    audit.record(request, "secret.restore_version", "success", project=project, secret_key=key)
+    data = _project_meta(project)
+    data["key"] = secret.key
+    data["ciphertext"] = secret.ciphertext
+    data["payload_type"] = secret.payload_type
+    return Response(data)
 
 
 @api_view(["GET"])

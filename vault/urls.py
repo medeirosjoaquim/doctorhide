@@ -12,6 +12,8 @@ urlpatterns = [
     path("projects/<str:public_id>/lock", views.project_lock, name="lock"),
     path("projects/<str:public_id>/secrets/add", views.secret_add, name="secret_add"),
     path("projects/<str:public_id>/secrets/<int:secret_id>/delete", views.secret_delete, name="secret_delete"),
+    path("projects/<str:public_id>/secrets/<int:secret_id>/versions", views.secret_versions, name="secret_versions"),
+    path("projects/<str:public_id>/secrets/<int:secret_id>/versions/<int:version_id>/restore", views.secret_version_restore, name="secret_version_restore"),
     path("projects/<str:public_id>/keys/new", views.api_key_create, name="api_key_create"),
     path("projects/<str:public_id>/keys/<int:key_id>/revoke", views.api_key_revoke, name="api_key_revoke"),
 ]

@@ -172,6 +172,24 @@ class ProjectAPIKey(models.Model):
             self.save(update_fields=["revoked_at"])
 
 
+class SecretVersion(models.Model):
+    """Version history for a secret. On every secret update, a new version is created.
+
+    Secret.ciphertext always points to the current version for compatibility.
+    """
+
+    secret = models.ForeignKey(Secret, on_delete=models.CASCADE, related_name="versions")
+    ciphertext = models.TextField()
+    label = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"{self.secret.key}/v{self.id}"
+
+
 class AuditEvent(models.Model):
     """Append-only record of vault access and mutations.
 

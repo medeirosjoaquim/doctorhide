@@ -63,6 +63,7 @@
             <span class="v">••••••••</span>
             <a class="btn btn-ghost mini" href="?reveal={{ s.obj.id }}">Reveal</a>
             {% endif %}
+            <a class="btn btn-ghost mini" href="{% url 'vault:secret_versions' public_id=project.public_id secret_id=s.obj.id %}">History</a>
             <form class="inline-form" method="post" action="{% url 'vault:secret_delete' public_id=project.public_id secret_id=s.obj.id %}">
                 {% csrf_token %}<button class="btn btn-ghost mini" type="submit">Delete</button>
             </form>
