@@ -31,15 +31,50 @@ def _project_meta(project):
     }
 
 
+DEFAULT_LIMIT = 100
+MAX_LIMIT = 1000
+
+
+def _parse_int(value, default, minimum):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < minimum:
+        return default
+    return parsed
+
+
 @api_view(["GET"])
 @authentication_classes([ProjectAPIKeyAuthentication])
 @permission_classes([IsAuthenticated])
 def secrets_list(request):
-    """List the keys in the authenticated project. Values are not returned."""
+    """List the keys in the authenticated project. Values are not returned.
+
+    Supports a `prefix` filter (key starts-with) and limit/offset pagination.
+    """
     project = request.user
+    keys = project.secrets.filter(deleted_at__isnull=True)
+
+    prefix = request.query_params.get("prefix")
+    if prefix:
+        keys = keys.filter(key__startswith=prefix)
+
+    keys = keys.order_by("key")
+    count = keys.count()
+
+    limit = min(
+        _parse_int(request.query_params.get("limit"), DEFAULT_LIMIT, minimum=1),
+        MAX_LIMIT,
+    )
+    offset = _parse_int(request.query_params.get("offset"), 0, minimum=0)
+
     data = _project_meta(project)
+    data["count"] = count
+    data["limit"] = limit
+    data["offset"] = offset
     data["keys"] = list(
-        project.secrets.filter(deleted_at__isnull=True).values_list("key", flat=True)
+        keys.values_list("key", flat=True)[offset : offset + limit]
     )
     return Response(data)
 
