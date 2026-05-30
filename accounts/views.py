@@ -52,6 +52,25 @@ def docs(request):
     return render(request, "accounts/docs.html")
 
 
+def terms(request):
+    return render(request, "accounts/terms.html")
+
+
+def privacy(request):
+    return render(request, "accounts/privacy.html")
+
+
+def security(request):
+    return render(request, "accounts/security.html")
+
+
+def security_txt(request):
+    content = """Contact: security@doctorhide.com
+Expires: 2025-12-31T00:00:00Z
+"""
+    return HttpResponse(content, content_type="text/plain")
+
+
 def signup(request):
     if request.user.is_authenticated and request.user.is_verified():
         return redirect("vault:projects")

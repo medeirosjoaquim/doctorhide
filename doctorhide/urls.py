@@ -19,11 +19,13 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from iam.views import whoami
+from accounts.views import security_txt
 
 from .health import healthz, readyz
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('.well-known/security.txt', security_txt, name='security_txt'),
     path('', include('accounts.urls')),
     path('', include('organizations.urls')),
     path('', include('vault.urls')),

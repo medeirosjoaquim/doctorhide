@@ -1,0 +1,79 @@
+{% extends "accounts/base.html" %}
+{% block title %}Security — doctorhide{% endblock %}
+{% block body %}
+<style>
+    .content-page { max-width: 52rem; margin: 3rem auto; padding: 0 1.5rem; }
+    .content-page h1 { font-size: 2rem; margin: 0 0 0.5rem; }
+    .content-page .updated { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+    .content-page h2 { font-size: 1.2rem; margin: 2rem 0 0.8rem; }
+    .content-page p { color: var(--text); line-height: 1.7; margin: 0.8rem 0; }
+    .draft-notice {
+        background: rgba(255, 193, 7, 0.1);
+        border: 1px solid rgba(255, 193, 7, 0.3);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 2rem;
+        font-size: 0.95rem;
+    }
+</style>
+<main class="content-page">
+    <h1>Security</h1>
+    <p class="updated">Last updated: December 2024</p>
+
+    <div class="draft-notice">
+        <strong>DRAFT:</strong> This Security page is a placeholder and is subject to change. Please review it carefully and contact us if you have any questions.
+    </div>
+
+    <section>
+        <h2>1. Reporting Security Vulnerabilities</h2>
+        <p>If you discover a security vulnerability in doctorhide, please email us at security@doctorhide.com with details of the vulnerability. Please do not publicly disclose the vulnerability until we have had a reasonable opportunity to address it.</p>
+    </section>
+
+    <section>
+        <h2>2. Encryption</h2>
+        <p>doctorhide uses industry-standard encryption to protect your data in transit and at rest. All communications between your browser and our servers are encrypted using TLS/SSL.</p>
+    </section>
+
+    <section>
+        <h2>3. Authentication</h2>
+        <p>We require all users to authenticate with a strong password and two-factor authentication (2FA) via a time-based one-time password (TOTP) application. Backup codes are provided for account recovery.</p>
+    </section>
+
+    <section>
+        <h2>4. Access Controls</h2>
+        <p>Access to doctorhide is controlled through authentication and authorization mechanisms. Only authenticated users can access their secrets, and access is further restricted based on organization and project permissions.</p>
+    </section>
+
+    <section>
+        <h2>5. Audit Logging</h2>
+        <p>doctorhide maintains audit logs of all access to secrets and administrative actions. These logs are retained for security and compliance purposes.</p>
+    </section>
+
+    <section>
+        <h2>6. Data Protection</h2>
+        <p>Your secrets are encrypted using PBKDF2 with Fernet. Even in the event of a database breach, secrets cannot be decrypted without the proper encryption keys.</p>
+    </section>
+
+    <section>
+        <h2>7. Infrastructure Security</h2>
+        <p>doctorhide infrastructure is designed with security as a core principle. We implement regular security updates, monitoring, and incident response procedures.</p>
+    </section>
+
+    <section>
+        <h2>8. Security Practices</h2>
+        <p>We follow industry-standard security practices including:</p>
+        <ul>
+            <li>Regular security audits and penetration testing</li>
+            <li>Secure coding practices</li>
+            <li>Principle of least privilege</li>
+            <li>Defense in depth</li>
+            <li>Incident response procedures</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>9. Contact</h2>
+        <p>For security inquiries, please contact security@doctorhide.com. For other inquiries, visit our website or contact us through the support channels.</p>
+    </section>
+</main>
+{% endblock %}

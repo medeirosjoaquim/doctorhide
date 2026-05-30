@@ -145,6 +145,15 @@
         </nav>
     </header>
     {% block body %}{% endblock %}
+    <footer style="border-top: 1px solid var(--border); margin-top: 4rem; padding: 2rem 1.5rem; text-align: center; color: var(--muted); font-size: 0.9rem;">
+        <div style="max-width: 1080px; margin: 0 auto;">
+            <div style="display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1rem;">
+                <a href="{% url 'accounts:terms' %}" style="color: var(--muted); text-decoration: none;">Terms of Service</a>
+                <a href="{% url 'accounts:privacy' %}" style="color: var(--muted); text-decoration: none;">Privacy Policy</a>
+                <a href="{% url 'accounts:security' %}" style="color: var(--muted); text-decoration: none;">Security</a>
+            </div>
+        </div>
+    </footer>
     <script>
         document.addEventListener('click', function (e) {
             var btn = e.target.closest('.pw-toggle');

@@ -258,3 +258,29 @@ class TermsAcceptanceTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "You must accept the Terms of Service and Privacy Policy.")
         self.assertFalse(User.objects.filter(username="testuser").exists())
+
+
+class LegalPagesTests(TestCase):
+    def test_terms_page_returns_200(self):
+        resp = self.client.get(reverse("accounts:terms"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Terms of Service", resp.content)
+        self.assertIn(b"DRAFT", resp.content)
+
+    def test_privacy_page_returns_200(self):
+        resp = self.client.get(reverse("accounts:privacy"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Privacy Policy", resp.content)
+        self.assertIn(b"DRAFT", resp.content)
+
+    def test_security_page_returns_200(self):
+        resp = self.client.get(reverse("accounts:security"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Security", resp.content)
+        self.assertIn(b"DRAFT", resp.content)
+
+    def test_security_txt_returns_200(self):
+        resp = self.client.get("/.well-known/security.txt")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/plain")
+        self.assertIn(b"Contact: security@doctorhide.com", resp.content)
