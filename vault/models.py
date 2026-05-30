@@ -27,6 +27,11 @@ class Project(models.Model):
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="projects"
     )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="projects",
+    )
     public_id = models.CharField(max_length=24, unique=True, db_index=True)
     name = models.CharField(max_length=100)
     salt = models.CharField(max_length=64)
@@ -44,6 +49,16 @@ class Project(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # Every project belongs to an organization; fall back to the owner's
+        # personal organization when one wasn't supplied (e.g. direct ORM
+        # creation in tests).
+        if self.organization_id is None and self.owner_id is not None:
+            from organizations.models import personal_organization
+
+            self.organization = personal_organization(self.owner)
+        super().save(*args, **kwargs)
 
     @staticmethod
     def new_public_id() -> str:

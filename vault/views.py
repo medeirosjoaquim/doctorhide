@@ -2,11 +2,32 @@ from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django_otp.decorators import otp_required
 
+from organizations.models import Organization, personal_organization
+
 from . import crypto
 from .models import Project, ProjectAPIKey, Secret
 
 SESSION_KEYS = "vault_keys"  # {public_id: fernet_key_str} for unlocked projects
 NEW_API_KEY_SESSION = "vault_new_api_key"
+CURRENT_ORG_SESSION = "vault_current_org"  # selected organization id
+
+
+def current_organization(request):
+    """Resolve the organization the request is acting under.
+
+    Prefers an explicit selection stored on the session; otherwise defaults to
+    the first organization the user owns (creating a personal one if needed).
+    """
+    org_id = request.session.get(CURRENT_ORG_SESSION)
+    if org_id is not None:
+        org = Organization.objects.filter(
+            id=org_id, memberships__user=request.user
+        ).first()
+        if org is not None:
+            return org
+    org = personal_organization(request.user)
+    request.session[CURRENT_ORG_SESSION] = org.id
+    return org
 
 
 def _unlocked_key(request, project):
@@ -53,6 +74,7 @@ def project_create(request):
             key = crypto.derive_key(passphrase, salt)
             project = Project.objects.create(
                 owner=request.user,
+                organization=current_organization(request),
                 public_id=Project.new_public_id(),
                 name=name,
                 salt=salt,

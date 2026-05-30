@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils.text import slugify
 
 
 class Organization(models.Model):
@@ -59,3 +60,35 @@ class Membership(models.Model):
     def at_least(self, role: str) -> bool:
         """True if this membership's role is at least as privileged as `role`."""
         return self.ROLE_RANK[self.role] >= self.ROLE_RANK[role]
+
+
+def _unique_slug(base):
+    base = slugify(base) or "org"
+    slug = base
+    n = 1
+    while Organization.objects.filter(slug=slug).exists():
+        n += 1
+        slug = f"{base}-{n}"
+    return slug
+
+
+def personal_organization(user):
+    """Return the organization the user owns, creating a personal one (with an
+    owner membership) the first time it is needed."""
+    membership = (
+        Membership.objects.filter(user=user, role=Membership.ROLE_OWNER)
+        .select_related("organization")
+        .order_by("organization__id")
+        .first()
+    )
+    if membership is not None:
+        return membership.organization
+
+    org = Organization.objects.create(
+        name=f"{user.get_username()}'s organization",
+        slug=_unique_slug(user.get_username()),
+    )
+    Membership.objects.create(
+        organization=org, user=user, role=Membership.ROLE_OWNER
+    )
+    return org
