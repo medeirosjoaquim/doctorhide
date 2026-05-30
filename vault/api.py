@@ -1,3 +1,4 @@
+import json
 import secrets as _secrets
 import string
 
@@ -14,7 +15,7 @@ from organizations.permissions import ProjectInOrganization
 
 from .authentication import ProjectAPIKeyAuthentication
 from .throttling import ProjectRateThrottle
-from .models import Secret, SecretVersion
+from .models import Secret, SecretVersion, Project
 from . import audit
 from . import webhooks
 
@@ -450,3 +451,203 @@ def generate_password(request):
     _secrets.SystemRandom().shuffle(chars)
 
     return Response({"value": "".join(chars), "length": length})
+
+
+@api_view(["GET"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated, ProjectInOrganization])
+@throttle_classes([ProjectRateThrottle])
+def export_secrets(request):
+    """Export all active secrets from the project as a JSON bundle.
+
+    DEBUG: This function is being called
+
+    Returns encrypted ciphertext + KDF metadata. The bundle format includes:
+    - metadata: project_id, kdf, salt, iterations
+    - secrets: list of {key, ciphertext, payload_type, tags}
+
+    Zero-knowledge is preserved: plaintext never leaves here.
+    Clients decrypt locally using the passphrase + salt.
+    """
+    project = request.user
+
+    export_format = request.query_params.get("format", "json")
+    if export_format not in ("json", "env"):
+        return Response(
+            {"detail": "format must be 'json' or 'env'."},
+            status=400,
+        )
+
+    secrets = project.secrets.filter(deleted_at__isnull=True).order_by("key")
+
+    if export_format == "json":
+        data = _project_meta(project)
+        data["secrets"] = [
+            {
+                "key": s.key,
+                "ciphertext": s.ciphertext,
+                "payload_type": s.payload_type,
+                "tags": s.tags or [],
+            }
+            for s in secrets
+        ]
+        audit.record(request, "secret.export", "success", project=project)
+        return Response(data)
+    else:
+        # .env-style format: KEY=ciphertext (newline-delimited)
+        # With metadata as comments at the top
+        lines = [
+            f"# doctorhide export",
+            f"# project_id={project.public_id}",
+            f"# kdf=pbkdf2-sha256",
+            f"# salt={project.salt}",
+            f"# iterations={project.iterations}",
+            "",
+        ]
+        for s in secrets:
+            lines.append(f"{s.key}={s.ciphertext}")
+
+        audit.record(request, "secret.export", "success", project=project)
+        return Response(
+            {"content": "\n".join(lines)},
+            headers={
+                "Content-Disposition": f"attachment; filename=secrets-{project.public_id}.env"
+            },
+        )
+
+
+@api_view(["POST"])
+@authentication_classes([ProjectAPIKeyAuthentication])
+@permission_classes([IsAuthenticated, ProjectInOrganization])
+@throttle_classes([ProjectRateThrottle])
+def import_secrets(request):
+    """Import encrypted secrets from a bulk export bundle.
+
+    Accepts JSON format with:
+    {
+        "secrets": [
+            {"key": "...", "ciphertext": "...", "payload_type": "string", "tags": []}
+        ]
+    }
+
+    Each secret is created/updated with the provided client-encrypted ciphertext.
+    Plaintext is rejected to preserve zero-knowledge.
+
+    Returns a summary: {imported: N, updated: N, errors: [...]}
+    """
+    project = request.user
+
+    if not isinstance(request.data, dict):
+        return Response(
+            {"detail": "Request body must be a JSON object."},
+            status=400,
+        )
+
+    secrets_list = request.data.get("secrets")
+    if not isinstance(secrets_list, list):
+        return Response(
+            {"detail": "secrets must be a list."},
+            status=400,
+        )
+
+    imported = 0
+    updated = 0
+    errors = []
+
+    for idx, entry in enumerate(secrets_list):
+        if not isinstance(entry, dict):
+            errors.append({"index": idx, "error": "Entry must be a JSON object."})
+            continue
+
+        key = entry.get("key", "").strip()
+        if not key:
+            errors.append({"index": idx, "error": "key is required and must not be empty."})
+            continue
+
+        if "plaintext" in entry:
+            errors.append({
+                "index": idx,
+                "key": key,
+                "error": "Plaintext is not accepted; send client-encrypted ciphertext.",
+            })
+            continue
+
+        ciphertext = entry.get("ciphertext", "").strip()
+        if not ciphertext:
+            errors.append({
+                "index": idx,
+                "key": key,
+                "error": "ciphertext is required and must not be empty.",
+            })
+            continue
+
+        payload_type = entry.get("payload_type", Secret.PAYLOAD_STRING)
+        valid_payload_types = {c[0] for c in Secret.PAYLOAD_TYPE_CHOICES}
+        if payload_type not in valid_payload_types:
+            errors.append({
+                "index": idx,
+                "key": key,
+                "error": f"payload_type must be one of: {', '.join(sorted(valid_payload_types))}",
+            })
+            continue
+
+        tags = entry.get("tags", [])
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            errors.append({
+                "index": idx,
+                "key": key,
+                "error": "tags must be a list of strings.",
+            })
+            continue
+
+        secret = project.secrets.filter(key=key).first()
+        created = secret is None
+
+        try:
+            if created:
+                secret = Secret(project=project, key=key)
+
+            secret.ciphertext = ciphertext
+            secret.payload_type = payload_type
+            secret.tags = tags
+            secret.deleted_at = None
+            secret.save()
+
+            SecretVersion.objects.create(
+                secret=secret,
+                ciphertext=ciphertext,
+                label="imported",
+            )
+
+            if created:
+                imported += 1
+                audit.record(
+                    request,
+                    "secret.create",
+                    "success",
+                    project=project,
+                    secret_key=key,
+                )
+            else:
+                updated += 1
+                audit.record(
+                    request,
+                    "secret.update",
+                    "success",
+                    project=project,
+                    secret_key=key,
+                )
+        except Exception as e:
+            errors.append({
+                "index": idx,
+                "key": key,
+                "error": str(e),
+            })
+
+    return Response(
+        {
+            "imported": imported,
+            "updated": updated,
+            "errors": errors,
+        }
+    )

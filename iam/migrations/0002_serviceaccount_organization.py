@@ -22,9 +22,10 @@ def backfill_organizations(apps, schema_editor):
         membership = Membership.objects.filter(user=user, role="owner").first()
         if membership is not None:
             return membership.organization
+        username = user.username if hasattr(user, 'username') else str(user.id)
         org = Organization.objects.create(
-            name=f"{user.get_username()}'s organization",
-            slug=_unique_slug(Organization, user.get_username()),
+            name=f"{username}'s organization",
+            slug=_unique_slug(Organization, username),
         )
         Membership.objects.create(organization=org, user=user, role="owner")
         return org
