@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: doctorhide_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-doctorhide}
+      POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doctorhide}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - doctorhide_net
+
+  migrate:
+    build: .
+    container_name: doctorhide_migrate
+    environment:
+      DJANGO_SETTINGS_MODULE: doctorhide.settings
+      POSTGRES_DB: ${POSTGRES_DB:-doctorhide}
+      POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-development-key}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python manage.py migrate
+    networks:
+      - doctorhide_net
+
+  app:
+    build: .
+    container_name: doctorhide_app
+    environment:
+      DJANGO_SETTINGS_MODULE: doctorhide.settings
+      POSTGRES_DB: ${POSTGRES_DB:-doctorhide}
+      POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-development-key}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+    networks:
+      - doctorhide_net
+
+volumes:
+  postgres_data:
+
+networks:
+  doctorhide_net:
+    driver: bridge
