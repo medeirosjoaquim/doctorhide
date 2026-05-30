@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Virtual environment
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+
+# Static
+staticfiles/
+
+# Misc
+.DS_Store
+*.log
