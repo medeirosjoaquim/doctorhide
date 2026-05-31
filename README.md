@@ -153,6 +153,103 @@ App is now at http://127.0.0.1:8000/.
 5. To revoke, select the key under **Iam → API keys** and run the **"Revoke selected API
    keys"** action. Revoked or expired keys return `401`.
 
+## Reading secrets via the API
+
+A **project API key** (`dhk_...`) reads the secrets in one project. Mint one from a
+project's page in the web app — it's shown only once.
+
+List the secret names (values are never returned):
+
+```bash
+KEY="dhk_xxxxxxxx_yyyyyyyy"
+curl http://127.0.0.1:8000/api/secrets -H "Authorization: Bearer $KEY"
+```
+
+```json
+{"project_id":"proj_...","kdf":"pbkdf2-sha256","salt":"zbMsfdEneFZ5x+NexKeH2g==",
+ "iterations":600000,"count":1,"limit":100,"offset":0,"keys":["test"]}
+```
+
+Fetch one secret. **The API returns the encrypted value, not the plaintext** — it
+returns the `ciphertext` plus the key-derivation metadata (`salt`, `iterations`). The
+server is zero-knowledge: it never has your passphrase, so it cannot decrypt. You
+decrypt **locally** with the passphrase (the "Salt" you set when creating the project):
+
+```bash
+curl http://127.0.0.1:8000/api/secrets/test -H "Authorization: Bearer $KEY"
+```
+
+```json
+{"project_id":"proj_...","kdf":"pbkdf2-sha256","salt":"zbMsfdEneFZ5x+NexKeH2g==",
+ "iterations":600000,"key":"test","ciphertext":"gAAAAA...","payload_type":"string"}
+```
+
+### Decrypting the value
+
+The scheme is PBKDF2-HMAC-SHA256 (32 bytes) → a Fernet (AES-128-CBC + HMAC) key. The
+stored `ciphertext` is `base64url(fernet_token)`, so decode that outer layer **before**
+Fernet-decrypting.
+
+**Python** (needs `cryptography`):
+
+```python
+import base64, requests
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+API = "http://127.0.0.1:8000"
+KEY = "dhk_xxxxxxxx_yyyyyyyy"
+PASSPHRASE = "the project's Salt"
+
+doc = requests.get(f"{API}/api/secrets/test",
+                   headers={"Authorization": f"Bearer {KEY}"}).json()
+
+kdf = PBKDF2HMAC(algorithm=SHA256(), length=32,
+                 salt=base64.b64decode(doc["salt"]),
+                 iterations=doc["iterations"])
+fernet_key = base64.urlsafe_b64encode(kdf.derive(PASSPHRASE.encode()))
+token = base64.urlsafe_b64decode(doc["ciphertext"])   # undo the outer base64 layer
+print(Fernet(fernet_key).decrypt(token).decode())
+```
+
+**JavaScript** (Node 18+, no dependencies):
+
+```javascript
+import crypto from "node:crypto";
+
+const API = "http://127.0.0.1:8000";
+const KEY = "dhk_xxxxxxxx_yyyyyyyy";
+const PASSPHRASE = "the project's Salt";
+
+const doc = await (await fetch(`${API}/api/secrets/test`, {
+  headers: { Authorization: `Bearer ${KEY}` },
+})).json();
+
+const dk = crypto.pbkdf2Sync(
+  PASSPHRASE, Buffer.from(doc.salt, "base64"), doc.iterations, 32, "sha256");
+const tokenStr = Buffer.from(doc.ciphertext, "base64url").toString("latin1"); // outer layer
+const token = Buffer.from(tokenStr, "base64url");                              // fernet token
+
+// Fernet token: version(1) | timestamp(8) | iv(16) | ciphertext | hmac(32)
+const signingKey = dk.subarray(0, 16);
+const encKey = dk.subarray(16, 32);
+const body = token.subarray(0, token.length - 32);
+const hmac = token.subarray(token.length - 32);
+const expected = crypto.createHmac("sha256", signingKey).update(body).digest();
+if (!crypto.timingSafeEqual(hmac, expected)) throw new Error("wrong passphrase");
+const iv = token.subarray(9, 25);
+const ct = token.subarray(25, token.length - 32);
+const decipher = crypto.createDecipheriv("aes-128-cbc", encKey, iv);
+console.log(Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8"));
+```
+
+A ready-made shell wrapper for the Python flow ships at `bin/dh-get`:
+
+```bash
+DH_KEY="dhk_xxxxxxxx_yyyyyyyy" bin/dh-get test   # prompts for the passphrase
+```
+
 ## Running tests
 
 ```bash

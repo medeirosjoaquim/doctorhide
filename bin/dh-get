@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# dh-get — fetch a doctorhide secret and decrypt it locally (zero-knowledge).
+#
+# The passphrase never leaves this machine: the script fetches only the
+# ciphertext + KDF metadata over the API, then derives the key and decrypts
+# locally, exactly like vault/crypto.py does server-side at encrypt time.
+#
+# Usage:
+#   DH_KEY="dhk_..." DH_PASSPHRASE="your-salt" bin/dh-get <secret-key>
+#   DH_KEY="dhk_..." bin/dh-get <secret-key>          # prompts for passphrase
+#
+# Optional:
+#   DH_BASE_URL   API base (default http://127.0.0.1:8000)
+#   DH_PYTHON     python to use (default ./venv/bin/python, then python3)
+#
+# Examples:
+#   DH_KEY="dhk_a7c6..." DH_PASSPHRASE="hunter2" bin/dh-get kkk
+#   DH_KEY="dhk_a7c6..." bin/dh-get kkk            # asks for passphrase, no echo
+set -euo pipefail
+
+key="${1:-}"
+if [[ -z "$key" ]]; then
+    echo "usage: DH_KEY=dhk_... [DH_PASSPHRASE=...] $0 <secret-key>" >&2
+    exit 2
+fi
+
+: "${DH_KEY:?set DH_KEY to your dhk_ project API key}"
+base_url="${DH_BASE_URL:-http://127.0.0.1:8000}"
+
+# Pick a python that has the `cryptography` package (the project venv does).
+if [[ -n "${DH_PYTHON:-}" ]]; then
+    py="$DH_PYTHON"
+elif [[ -x "./venv/bin/python" ]]; then
+    py="./venv/bin/python"
+else
+    py="python3"
+fi
+
+# Prompt for the passphrase if not supplied, without echoing it.
+if [[ -z "${DH_PASSPHRASE:-}" ]]; then
+    read -r -s -p "Passphrase (the project's Salt): " DH_PASSPHRASE
+    echo >&2
+fi
+export DH_PASSPHRASE
+
+# Fetch ciphertext + KDF metadata, then decrypt locally.
+curl -fsS "${base_url}/api/secrets/${key}" \
+    -H "Authorization: Bearer ${DH_KEY}" \
+| "$py" -c '
+import sys, json, base64, os
+from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.fernet import Fernet, InvalidToken
+
+doc = json.load(sys.stdin)
+if "ciphertext" not in doc:
+    sys.exit("response has no ciphertext: " + json.dumps(doc))
+
+kdf = PBKDF2HMAC(
+    algorithm=SHA256(),
+    length=32,
+    salt=base64.b64decode(doc["salt"]),
+    iterations=doc["iterations"],
+)
+fernet_key = base64.urlsafe_b64encode(kdf.derive(os.environ["DH_PASSPHRASE"].encode()))
+# Stored ciphertext is base64url(fernet_token) — undo the outer layer first.
+token = base64.urlsafe_b64decode(doc["ciphertext"].encode())
+try:
+    plaintext = Fernet(fernet_key).decrypt(token)
+except InvalidToken:
+    sys.exit("decryption failed: wrong passphrase for this project")
+
+if doc.get("payload_type") == "binary":
+    sys.stdout.buffer.write(plaintext)
+else:
+    sys.stdout.write(plaintext.decode())
+    sys.stdout.write("\n")
+'
