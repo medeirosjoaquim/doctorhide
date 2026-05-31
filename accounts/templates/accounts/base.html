@@ -112,6 +112,7 @@
         }
         .pw-toggle:hover { color: var(--text); }
         .pw-toggle svg { width: 18px; height: 18px; display: block; }
+        .pw-toggle svg[hidden] { display: none; }
         .error {
             color: var(--danger);
             background: rgba(255, 107, 107, 0.08);
@@ -151,6 +152,9 @@
                 <a href="{% url 'accounts:terms' %}" style="color: var(--muted); text-decoration: none;">Terms of Service</a>
                 <a href="{% url 'accounts:privacy' %}" style="color: var(--muted); text-decoration: none;">Privacy Policy</a>
                 <a href="{% url 'accounts:security' %}" style="color: var(--muted); text-decoration: none;">Security</a>
+            </div>
+            <div style="font-size: 0.85rem; margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+                Need help? Contact <a href="mailto:support@doctorhide.com" style="color: var(--accent); text-decoration: none;">support@doctorhide.com</a>
             </div>
         </div>
     </footer>

@@ -284,3 +284,20 @@ class LegalPagesTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["Content-Type"], "text/plain")
         self.assertIn(b"Contact: security@doctorhide.com", resp.content)
+
+    def test_footer_displays_support_contact(self):
+        """Test that all pages include the support contact link in footer."""
+        pages = [
+            reverse("accounts:home"),
+            reverse("accounts:login"),
+            reverse("accounts:signup"),
+            reverse("accounts:terms"),
+            reverse("accounts:privacy"),
+            reverse("accounts:security"),
+        ]
+        for page in pages:
+            with self.subTest(page=page):
+                resp = self.client.get(page)
+                self.assertEqual(resp.status_code, 200)
+                self.assertIn(b"support@doctorhide.com", resp.content)
+                self.assertIn(b"Need help?", resp.content)
