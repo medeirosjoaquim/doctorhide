@@ -63,10 +63,9 @@ kdf = PBKDF2HMAC(
     iterations=doc["iterations"],
 )
 fernet_key = base64.urlsafe_b64encode(kdf.derive(os.environ["DH_PASSPHRASE"].encode()))
-# Stored ciphertext is base64url(fernet_token) — undo the outer layer first.
-token = base64.urlsafe_b64decode(doc["ciphertext"].encode())
+# Stored ciphertext is the Fernet token itself — pass it straight to Fernet.
 try:
-    plaintext = Fernet(fernet_key).decrypt(token)
+    plaintext = Fernet(fernet_key).decrypt(doc["ciphertext"].encode())
 except InvalidToken:
     sys.exit("decryption failed: wrong passphrase for this project")
 

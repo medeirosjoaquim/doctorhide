@@ -187,8 +187,8 @@ curl http://127.0.0.1:8000/api/secrets/test -H "Authorization: Bearer $KEY"
 ### Decrypting the value
 
 The scheme is PBKDF2-HMAC-SHA256 (32 bytes) → a Fernet (AES-128-CBC + HMAC) key. The
-stored `ciphertext` is `base64url(fernet_token)`, so decode that outer layer **before**
-Fernet-decrypting.
+stored `ciphertext` is the Fernet token itself (already urlsafe-base64), so pass it
+straight to Fernet to decrypt.
 
 **Python** (needs `cryptography`):
 
@@ -209,8 +209,7 @@ kdf = PBKDF2HMAC(algorithm=SHA256(), length=32,
                  salt=base64.b64decode(doc["salt"]),
                  iterations=doc["iterations"])
 fernet_key = base64.urlsafe_b64encode(kdf.derive(PASSPHRASE.encode()))
-token = base64.urlsafe_b64decode(doc["ciphertext"])   # undo the outer base64 layer
-print(Fernet(fernet_key).decrypt(token).decode())
+print(Fernet(fernet_key).decrypt(doc["ciphertext"].encode()).decode())
 ```
 
 **JavaScript** (Node 18+, no dependencies):

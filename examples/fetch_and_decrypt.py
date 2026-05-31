@@ -45,8 +45,8 @@ def fetch_secret(base_url, api_key, key):
 def decrypt_secret(doc, passphrase):
     """Derive the Fernet key from passphrase + salt + iterations and decrypt.
 
-    The stored ciphertext is base64url(fernet_token), so the outer base64 layer
-    is removed before Fernet decryption."""
+    The stored ciphertext is the Fernet token itself (already urlsafe-base64),
+    so it is passed straight to Fernet — matching the server's crypto.decrypt."""
     kdf = PBKDF2HMAC(
         algorithm=SHA256(),
         length=32,
@@ -54,8 +54,7 @@ def decrypt_secret(doc, passphrase):
         iterations=doc["iterations"],
     )
     fernet_key = base64.urlsafe_b64encode(kdf.derive(passphrase.encode()))
-    token = base64.urlsafe_b64decode(doc["ciphertext"].encode())
-    plaintext = Fernet(fernet_key).decrypt(token)
+    plaintext = Fernet(fernet_key).decrypt(doc["ciphertext"].encode())
     if doc.get("payload_type") == "binary":
         return plaintext  # bytes
     return plaintext.decode()

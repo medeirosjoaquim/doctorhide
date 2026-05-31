@@ -9,8 +9,8 @@ creating the project) never leaves your machine.
 ## Decryption scheme
 
 - Derive a 32-byte key with PBKDF2-HMAC-SHA256 from `passphrase` + `salt` + `iterations`.
-- The API's `ciphertext` is `base64url(fernet_token)` — decode that outer layer first.
-- Fernet-decrypt the token (AES-128-CBC + HMAC) to recover the plaintext.
+- The API's `ciphertext` is the Fernet token itself (already urlsafe-base64).
+- Fernet-decrypt it (AES-128-CBC + HMAC) to recover the plaintext.
 
 ## Python
 

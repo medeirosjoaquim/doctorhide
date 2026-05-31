@@ -33,14 +33,13 @@ async function fetchSecret(baseUrl, apiKey, key) {
 }
 
 // Derive the key (PBKDF2-HMAC-SHA256, 32 bytes) and Fernet-decrypt.
-// The stored ciphertext is base64url(fernet_token) — undo the outer layer, then
-// parse the Fernet token: version(1) | timestamp(8) | iv(16) | ciphertext | hmac(32).
+// The stored ciphertext is the Fernet token itself (urlsafe-base64), so decode
+// it once to get the raw token: version(1) | timestamp(8) | iv(16) | ciphertext | hmac(32).
 function decryptSecret(doc, passphrase) {
   const dk = crypto.pbkdf2Sync(
     passphrase, Buffer.from(doc.salt, "base64"), doc.iterations, 32, "sha256");
 
-  const tokenStr = Buffer.from(doc.ciphertext, "base64url").toString("latin1");
-  const token = Buffer.from(tokenStr, "base64url");
+  const token = Buffer.from(doc.ciphertext, "base64url");
 
   const signingKey = dk.subarray(0, 16);
   const encKey = dk.subarray(16, 32);
