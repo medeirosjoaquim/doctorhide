@@ -57,8 +57,18 @@
         {% for s in secrets %}
         <div class="row">
             <span class="k">{{ s.obj.key }}</span>
+            {% if s.value is not None and request.GET.edit == s.obj.id|stringformat:"s" %}
+            <form class="inline-form" method="post" action="{% url 'vault:secret_add' public_id=project.public_id %}" style="flex:1;display:flex;gap:0.5rem;align-items:center;">
+                {% csrf_token %}
+                <input type="hidden" name="key" value="{{ s.obj.key }}">
+                <input type="text" name="value" value="{{ s.value }}" aria-label="New value for {{ s.obj.key }}" autofocus style="flex:1;margin:0;">
+                <button class="btn btn-primary mini" type="submit">Save</button>
+                <a class="btn btn-ghost mini" href="?reveal={{ s.obj.id }}">Cancel</a>
+            </form>
+            {% else %}
             {% if s.value is not None %}
             <span class="v shown">{{ s.value }}</span>
+            <a class="btn btn-ghost mini" href="?reveal={{ s.obj.id }}&edit={{ s.obj.id }}">Edit</a>
             {% else %}
             <span class="v">••••••••</span>
             <a class="btn btn-ghost mini" href="?reveal={{ s.obj.id }}">Reveal</a>
@@ -67,6 +77,7 @@
             <form class="inline-form" method="post" action="{% url 'vault:secret_delete' public_id=project.public_id secret_id=s.obj.id %}">
                 {% csrf_token %}<button class="btn btn-ghost mini" type="submit">Delete</button>
             </form>
+            {% endif %}
         </div>
         {% empty %}
         <p style="color:var(--muted);">No secrets yet.</p>
