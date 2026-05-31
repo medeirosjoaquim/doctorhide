@@ -45,6 +45,11 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Default command: run gunicorn
+# Default command: run gunicorn with threaded workers so idle/slow connections
+# don't tie up (and time out) a whole worker. --timeout 120 quiets the spurious
+# "WORKER TIMEOUT / no URI read" log from empty keep-alive/probe sockets.
 # Can be overridden (e.g., for management commands like migrate)
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "doctorhide.wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", \
+     "--workers", "2", "--worker-class", "gthread", "--threads", "4", \
+     "--timeout", "120", \
+     "doctorhide.wsgi:application"]
