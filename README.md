@@ -1,14 +1,49 @@
 # doctorhide
 
-A secrets-manager-style service. This first slice is the **authentication system**:
+A zero-knowledge secrets-manager service.
 
 - **Humans** sign in with username + password, then a required TOTP second factor
   (Google Authenticator), enrolled by scanning a QR code on first login, with one-time
-  backup codes.
+  backup codes (downloadable as a PDF).
 - **Machines** authenticate with API keys (`Authorization: Bearer dh_live_...`) that belong
   to **service accounts** (machine identities decoupled from people). Keys are stored hashed
   and the secret is shown only once, at mint time.
+- **Secrets** live in projects, encrypted client-side under a passphrase the server never
+  sees (PBKDF2 + Fernet); the REST API returns ciphertext, never plaintext.
 - `GET /whoami` is a probe endpoint reachable by either path; it reports the current principal.
+- Browsable docs are served at `/docs`.
+
+## Quick start with Docker Compose
+
+The fastest way to run the whole stack (app + Postgres). Requires Docker.
+
+1. Create your `.env` from the example and set, at minimum, a superuser password:
+
+   ```bash
+   cp .env.example .env
+   # then edit .env and set DJANGO_SUPERUSER_PASSWORD (compose refuses to start without it)
+   ```
+
+2. Bring it up:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   This starts three services in order: **db** (Postgres 17, host port 5433) → **init**
+   (runs migrations and auto-creates the admin from `DJANGO_SUPERUSER_*`, idempotent — a
+   no-op if the user already exists) → **app** (gunicorn on http://127.0.0.1:8000/).
+
+   The `init` service **fails fast** if `DJANGO_SUPERUSER_PASSWORD` is unset, so the app
+   never boots without an admin account. Username defaults to `admin`; override with
+   `DJANGO_SUPERUSER_USERNAME` / `DJANGO_SUPERUSER_EMAIL`.
+
+3. Log in at http://127.0.0.1:8000/login with the superuser you configured (you'll enroll
+   TOTP on first login — see [Using it](#using-it)).
+
+To stop: `docker compose down` (add `-v` to also drop the database volume).
+
+## Manual setup (without Compose)
 
 ## Prerequisites
 
@@ -22,8 +57,7 @@ A secrets-manager-style service. This first slice is the **authentication system
 
 ```bash
 uv venv venv
-uv pip install --python venv/bin/python \
-  django djangorestframework django-otp "qrcode[pil]" "psycopg[binary]" python-dotenv
+uv pip install --python venv/bin/python -r requirements.txt
 ```
 
 Activate it for the commands below:
@@ -133,6 +167,7 @@ python manage.py test
   at mint time and is unrecoverable afterward.
 - **TOTP** uses a ±30s drift window and rejects a code that's already been used (replay
   protection), and is required for every human account.
-- **Before production:** move `SECRET_KEY` out of `settings.py` into an environment variable,
-  set `DEBUG = False`, configure `ALLOWED_HOSTS`, and serve over HTTPS. These are intentionally
-  left as dev defaults for now.
+- **Production config is env-driven.** `SECRET_KEY`, `DJANGO_DEBUG`, and `ALLOWED_HOSTS` are
+  read from the environment (see `.env.example`). Set `DJANGO_ENV=production` to require
+  `SECRET_KEY` and enable HTTPS hardening (SSL redirect, HSTS, secure cookies), and serve
+  behind TLS.

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: postgres:17-alpine
@@ -9,7 +7,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,40 +18,39 @@ services:
     networks:
       - doctorhide_net
 
-  migrate:
+  init:
     build: .
-    container_name: doctorhide_migrate
+    container_name: doctorhide_init
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: doctorhide.settings
-      POSTGRES_DB: ${POSTGRES_DB:-doctorhide}
-      POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      SECRET_KEY: ${SECRET_KEY:-django-insecure-development-key}
+      # Required: compose fails fast if DJANGO_SUPERUSER_PASSWORD is unset.
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:?set DJANGO_SUPERUSER_PASSWORD in .env to create the admin account}
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
     depends_on:
       db:
         condition: service_healthy
-    command: python manage.py migrate
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py ensure_superuser"
     networks:
       - doctorhide_net
 
   app:
     build: .
     container_name: doctorhide_app
+    env_file:
+      - .env
     environment:
       DJANGO_SETTINGS_MODULE: doctorhide.settings
-      POSTGRES_DB: ${POSTGRES_DB:-doctorhide}
-      POSTGRES_USER: ${POSTGRES_USER:-doctorhide}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doctorhide}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
-      SECRET_KEY: ${SECRET_KEY:-django-insecure-development-key}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     depends_on:
-      migrate:
+      init:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
