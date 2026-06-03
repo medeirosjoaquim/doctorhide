@@ -16,6 +16,10 @@ from organizations.permissions import ProjectInOrganization
 from .authentication import ProjectAPIKeyAuthentication
 from .throttling import ProjectRateThrottle
 from .models import Secret, SecretVersion, Project
+from .metrics import (
+    vault_secret_batch_get_total,
+    vault_secret_reads_total,
+)
 from . import audit
 from . import webhooks
 
@@ -117,6 +121,9 @@ def secrets_batch_get(request):
     else:
         keys = request.query_params.getlist("key")
     if not isinstance(keys, (list, tuple)) or not keys:
+        vault_secret_batch_get_total.labels(
+            project_id=project.public_id, outcome="denied"
+        ).inc()
         return Response(
             {"detail": "keys is required and must be a non-empty list."}, status=400
         )
@@ -136,6 +143,9 @@ def secrets_batch_get(request):
         if k in found
     ]
     data["missing"] = [k for k in keys if k not in found]
+    vault_secret_batch_get_total.labels(
+        project_id=project.public_id, outcome="success"
+    ).inc()
     return Response(data)
 
 
@@ -226,6 +236,10 @@ def secret_detail(request, key):
     if secret is None:
         action = "secret.delete" if request.method == "DELETE" else "secret.read"
         audit.record(request, action, "denied", project=project, secret_key=key)
+        if request.method == "GET":
+            vault_secret_reads_total.labels(
+                project_id=project.public_id, outcome="denied"
+            ).inc()
         return Response({"detail": "Not found."}, status=404)
     if request.method == "DELETE":
         secret.soft_delete()
@@ -233,6 +247,9 @@ def secret_detail(request, key):
         audit.record(request, "secret.delete", "success", project=project, secret_key=key)
         return Response(status=204)
     audit.record(request, "secret.read", "success", project=project, secret_key=key)
+    vault_secret_reads_total.labels(
+        project_id=project.public_id, outcome="success"
+    ).inc()
     return Response(_secret_data(project, secret))
 
 
