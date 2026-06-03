@@ -1,0 +1,43 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  # The default receiver for everything; downstream tooling can add
+  # severity-based sub-routes once a real channel is wired.
+  receiver: "doctorhide-default"
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # Critical alerts page immediately. The webhook target is a
+    # placeholder; in dev the alert simply gets logged to the
+    # alertmanager container's stdout. In production, point
+    # ``doctorhide-oncall-webhook`` at the team's PagerDuty / Opsgenie
+    # webhook (or replace with email/Slack receivers).
+    - matchers:
+        - severity = "critical"
+      receiver: "doctorhide-oncall"
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  - name: "doctorhide-default"
+    webhook_configs:
+      - url: "http://webhooks:5001/doctorhide/alerts"
+        send_resolved: true
+        # max_alerts is left at the Alertmanager default; a noisy
+        # alert should be silenced or routed, not truncated.
+
+  - name: "doctorhide-oncall"
+    webhook_configs:
+      - url: "http://webhooks:5001/doctorhide/alerts/critical"
+        send_resolved: true
+
+# Inhibit: a high-severity incident suppresses the lower-severity
+# alerts about the same project for an hour. Avoids alert storms
+# during an active incident.
+inhibit_rules:
+  - source_matchers: [severity = "critical"]
+    target_matchers: [severity = "high"]
+    equal: ["project_id"]

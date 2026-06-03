@@ -57,8 +57,69 @@ services:
     networks:
       - doctorhide_net
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: doctorhide_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+    networks:
+      - doctorhide_net
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: doctorhide_alertmanager
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+    depends_on:
+      - prometheus
+    networks:
+      - doctorhide_net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: doctorhide_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - doctorhide_net
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: doctorhide_postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-doctorhide}:${POSTGRES_PASSWORD:-doctorhide}@db:5432/${POSTGRES_DB:-doctorhide}?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - doctorhide_net
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   doctorhide_net:

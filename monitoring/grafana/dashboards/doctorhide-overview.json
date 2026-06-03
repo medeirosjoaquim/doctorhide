@@ -1,0 +1,128 @@
+{
+  "title": "doctorhide — Vault Overview",
+  "uid": "doctorhide-vault-overview",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "tags": ["doctorhide", "vault", "security"],
+  "timezone": "browser",
+  "schema": {
+    "name": "doctorhide-vault-overview",
+    "version": 38,
+    "refresh": "30s",
+    "tags": ["doctorhide", "vault", "security"],
+    "time": {"from": "now-1h", "to": "now"},
+    "timezone": "browser"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Secret reads (rate, 5m)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(vault_secret_reads_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "ops", "label": "reads/sec"},
+        {"format": "short"}
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Batch reads (rate, 5m)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(vault_secret_batch_get_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "ops", "label": "batches/sec"},
+        {"format": "short"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Failed unlock attempts (rate, 5m, by project)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (project_id) (rate(vault_unlock_failures_total[5m])))",
+          "legendFormat": "{{project_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "ops", "label": "failures/sec"},
+        {"format": "short"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Django request latency (p95, 5m)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, view) (rate(django_http_requests_latency_seconds_bucket{view!~\"healthz|readyz|metrics|schema|swagger-ui|security_txt\"}[5m])))",
+          "legendFormat": "{{view}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "s", "label": "p95 latency"},
+        {"format": "short"}
+      ]
+    },
+    {
+      "id": 5,
+      "title": "DB query time (p95, 5m)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(django_db_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "s", "label": "DB p95"},
+        {"format": "short"}
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Security alerts (rate, 5m, by type)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "expr": "sum by (type) (rate(vault_security_alerts_total[5m]))",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {"format": "ops", "label": "alerts/sec"},
+        {"format": "short"}
+      ]
+    }
+  ]
+}

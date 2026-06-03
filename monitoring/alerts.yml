@@ -1,0 +1,78 @@
+groups:
+  - name: doctorhide.security
+    interval: 30s
+    rules:
+      # An attacker is rate-limited but persistent; the per-user
+      # incident throttle (3/hour) caps the blast radius, but a 5+ in
+      # 15 min burst is still a strong signal of credential stuffing.
+      - alert: DoctorhideIncidentEndpointAbuse
+        expr: sum(rate(django_http_responses_total_by_status_view{view="incident_revoke_all_keys",status=~"403|429"}[5m])) > 5 / 300
+        for: 15m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "Incident endpoint being hammered"
+          description: >
+            The /admin/incident/revoke-all-keys endpoint is being hit
+            >5x per 15min with 403/429 responses. Either an attacker is
+            probing the kill switch, or a misconfigured tool is in a
+            retry loop. Investigate the AuditEvent rows tagged
+            `incident.revoke_all_keys` (denied or throttled outcomes)
+            in the last hour.
+
+      # 5+ failed project unlocks in 15min from a single project
+      # indicates a passphrase-spray attempt. The counter is
+      # per-project; a real user typo would not produce 5 in 15min.
+      - alert: DoctorhideFailedUnlockSpike
+        expr: sum by (project_id) (rate(vault_unlock_failures_total[5m])) > 5 / 900
+        for: 15m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "Failed unlock spike on {{ $labels.project_id }}"
+          description: >
+            Project {{ $labels.project_id }} has had >5 failed unlock
+            attempts in 15min. Likely a passphrase-spray. Force a
+            passphrase rekey (set Project.requires_rekey=True or hit
+            the Week 1 rekey endpoint) and audit the
+            `auth.session.unlock_failed` AuditEvent rows.
+
+      # A single API key fetching >50 secrets/min is anomalous. Real
+      # workloads batch (the batch_get endpoint caps at 100 keys per
+      # call) and rarely exceed this rate. Could be a leaked key, a
+      # runaway cron, or an exfil script.
+      - alert: DoctorhideSecretReadAnomaly
+        expr: sum by (project_id) (rate(vault_secret_reads_total{outcome="success"}[1m])) > 50 / 60
+        for: 5m
+        labels:
+          severity: high
+          team: security
+        annotations:
+          summary: "Secret-read anomaly on {{ $labels.project_id }}"
+          description: >
+            Project {{ $labels.project_id }} is reading secrets at
+            >50/min sustained for 5min. Investigate the dhk_ key
+            responsible (correlate with AuditEvent rows tagged
+            `secret.read` outcome=success in the last 30min) and
+            rotate the key if it is not your own workload.
+
+      # In-process security detectors firing. The counter is
+      # incremented by ``vault.alerts.emit_security_alert`` and
+      # accompanied by an AuditEvent row tagged `security.alert`.
+      # Any non-zero value warrants a human look.
+      - alert: DoctorhideSecurityAlertFired
+        expr: increase(vault_security_alerts_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Security alert fired: {{ $labels.type }}"
+          description: >
+            An in-process detector fired ({{ $labels.type }},
+            severity {{ $labels.severity }}). See the AuditEvent
+            table for the source IP / actor / context. This is the
+            highest-priority alert; the on-call engineer should be on
+            this within 15min.
