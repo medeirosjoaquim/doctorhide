@@ -34,9 +34,6 @@ class Project(models.Model):
     )
     public_id = models.CharField(max_length=24, unique=True, db_index=True)
     name = models.CharField(max_length=100)
-    salt = models.CharField(max_length=64)
-    iterations = models.PositiveIntegerField(default=DEFAULT_ITERATIONS)
-    verifier = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -63,6 +60,117 @@ class Project(models.Model):
     @staticmethod
     def new_public_id() -> str:
         return "proj_" + secrets.token_hex(PUBLIC_ID_BYTES)
+
+    # ------------------------------------------------------------------
+    # Environment (Week 8 Phase 1) — the cryptography lives on Environment,
+    # not Project. These four read-only properties are a *temporary shim*
+    # that delegates to the project's default environment, so the dozens
+    # of call sites that read project.salt / project.verifier / etc. keep
+    # working during the multi-phase refactor. Phase 3 removes these shims
+    # when views and tests are rewritten to take an ``env_slug``.
+    # ------------------------------------------------------------------
+
+    @property
+    def default_environment(self) -> "Environment":
+        """Return the project's seeded ``default`` environment.
+
+        Auto-created by a ``post_save`` signal on Project (see
+        ``vault/signals.py``), so this should never raise for a project
+        that came through ``Project.objects.save()``. Direct ORM
+        ``Project()`` + ``.save()`` paths go through the signal; direct
+        ``Project.objects.create(salt=..., verifier=...)`` patterns
+        pre-date Week 8 and are addressed in Phase 6 (test rewrite).
+        """
+        return self.environments.get(slug="default")
+
+    @property
+    def salt(self) -> str:
+        return self.default_environment.salt
+
+    @property
+    def iterations(self) -> int:
+        return self.default_environment.iterations
+
+    @property
+    def verifier(self) -> str:
+        return self.default_environment.verifier
+
+    @property
+    def requires_rekey(self) -> bool:
+        return self.default_environment.requires_rekey
+
+
+# ------------------------------------------------------------------
+# Environment (Week 8 Phase 1) — the new encryption boundary.
+#
+# A Project is now a container; each Environment owns its own salt,
+# verifier, KDF iterations, and ``requires_rekey`` flag. The passphrase
+# itself is never stored. A leaked dev environment's passphrase does
+# not expose prod's ciphertexts, because the two envs derive their
+# keys from independent salts.
+# ------------------------------------------------------------------
+
+
+class Environment(models.Model):
+    """A scoped namespace of secrets within a Project, with its own
+    passphrase and its own per-env API keys.
+
+    The Week 8 refactor split Project's cryptography into Environment
+    so that each environment (dev / staging / prod / ...) is its own
+    encryption boundary. Pre-Week 8, a leaked project passphrase
+    exposed every secret in the project; post-Week 8, an env's
+    passphrase exposes only the secrets in that env.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="environments"
+    )
+    name = models.CharField(max_length=100)
+    # URL-friendly identifier, unique per project. The slug is the URL
+    # key (``/projects/<id>/envs/<slug>/...``); the ``name`` is the
+    # human label. Slug is constrained to characters that survive URL
+    # routing without escaping.
+    slug = models.CharField(max_length=64)
+
+    # Cryptography. The passphrase is never stored; ``salt`` and
+    # ``verifier`` are enough to derive the same key from a later
+    # passphrase entry and to verify the result.
+    salt = models.CharField(max_length=64)
+    iterations = models.PositiveIntegerField(default=DEFAULT_ITERATIONS)
+    verifier = models.TextField()
+
+    # Set by the incident response flow when this environment's
+    # passphrase is suspected compromised. The next ``env_unlock``
+    # redirects to ``env_rekey`` instead of granting vault access.
+    requires_rekey = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Slug is the URL key (must be unique within a project); name is
+        # the UI label (also unique within a project so the env list
+        # never shows two ``"production"`` rows).
+        unique_together = (("project", "slug"), ("project", "name"))
+        ordering = ("project", "slug")
+
+    def __str__(self):
+        return f"{self.project.name}/{self.slug}"
+
+    @staticmethod
+    def default_seeded_name() -> str:
+        """The human label of the auto-seeded default environment.
+
+        Centralised so Phase 3's env-seeding expansion (development /
+        staging / production) can rename the seed consistently without
+        grepping for string literals.
+        """
+        return "Default"
+
+    @staticmethod
+    def default_seeded_slug() -> str:
+        """The URL slug of the auto-seeded default environment."""
+        return "default"
 
 
 class Secret(models.Model):
