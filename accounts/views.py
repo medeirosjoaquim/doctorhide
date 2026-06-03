@@ -137,13 +137,20 @@ def login_view(request):
 
     error = None
     if request.method == "POST":
+        username = request.POST.get("username", "")
         user = authenticate(
             request,
-            username=request.POST.get("username"),
+            username=username,
             password=request.POST.get("password"),
         )
         if user is None or not user.is_active:
             error = "Invalid username or password."
+            # Feed the in-process detector so a password-spray from
+            # one source IP fires the Prometheus alert and writes a
+            # security.alert AuditEvent row after the threshold.
+            from vault.alerts import track_failed_login
+
+            track_failed_login(request, username=username, step="password")
         else:
             # Password verified, but not logged in yet — TOTP is required next.
             request.session[PENDING_SESSION_KEY] = user.pk
@@ -207,6 +214,9 @@ def totp_verify(request):
             _complete_login(request, user, device)
             return redirect("vault:projects")
         error = "Invalid code."
+        from vault.alerts import track_failed_login
+
+        track_failed_login(request, username=user.username, step="totp")
 
     return render(request, "accounts/totp_verify.html", {"error": error})
 
