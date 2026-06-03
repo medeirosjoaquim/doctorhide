@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'django_otp',
     'django_otp.plugins.otp_totp',
     'django_otp.plugins.otp_static',
+    'django_prometheus',
     'accounts',
     'iam',
     'organizations',
@@ -70,6 +71,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -78,6 +80,7 @@ MIDDLEWARE = [
     'django_otp.middleware.OTPMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'doctorhide.urls'
@@ -230,11 +233,21 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # Custom handler: writes an AuditEvent row when the admin incident
+    # endpoint returns 429, so a misfiring tool leaves a paper trail
+    # rather than silently dropping rate-limited calls. Falls through
+    # to the default DRF handler in every other case.
+    'EXCEPTION_HANDLER': 'vault.exception_handler.incident_exception_handler',
     'DEFAULT_THROTTLE_RATES': {
         # Per-project rate limit for the dhk_ vault API. Configurable from env;
         # a generous default keeps dev/test working without extra setup while
         # still capping abusive clients.
         'vault_api': os.environ.get('VAULT_API_THROTTLE_RATE', '1000/min'),
+        # Tight rate for the admin incident kill-switch. The endpoint is
+        # intentionally destructive: a small handful of calls per hour per
+        # superuser is the design point. Configurable from env for tests
+        # (and so that tests can clear the bucket between cases).
+        'incident': os.environ.get('INCIDENT_THROTTLE_RATE', '3/hour'),
     },
 }
 

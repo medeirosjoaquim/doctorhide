@@ -18,12 +18,21 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from iam.views import whoami
 from accounts.views import security_txt
+from iam.views import whoami
+from vault.incident_views import incident_revoke_all_keys
 
 from .health import healthz, readyz
 
 urlpatterns = [
+    # Admin-only incident-response endpoint. Declared before the Django admin
+    # catch-all so the path resolves to our DRF view, not 404 inside the
+    # admin. The endpoint is itself gated on is_superuser + TOTP + throttle.
+    path(
+        'admin/incident/revoke-all-keys',
+        incident_revoke_all_keys,
+        name='incident_revoke_all_keys',
+    ),
     path('admin/', admin.site.urls),
     path('.well-known/security.txt', security_txt, name='security_txt'),
     path('', include('accounts.urls')),
@@ -40,4 +49,11 @@ urlpatterns = [
     path('whoami', whoami, name='whoami'),
     path('healthz', healthz, name='healthz'),
     path('readyz', readyz, name='readyz'),
+    # Prometheus scrape endpoint. Exposed at /metrics (the convention
+    # ``monitoring/prometheus.yml`` is configured to scrape). In
+    # production this path should be reachable only from the
+    # internal Docker network (no public ingress); the docker-compose
+    # wiring already achieves that. If the app is ever exposed
+    # directly to the public internet, restrict at the LB layer.
+    path('', include('django_prometheus.urls')),
 ]
