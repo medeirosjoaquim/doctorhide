@@ -21,9 +21,10 @@ class SecretTagsTests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="tagproj",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        self.project.default_environment.salt = self.salt
+        self.project.default_environment.verifier = crypto.make_verifier(self.key)
+        self.project.default_environment.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 

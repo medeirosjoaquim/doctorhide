@@ -1,12 +1,9 @@
-import json
 
 from django.contrib.auth import get_user_model
-from django.urls import reverse
 from rest_framework.test import APIClient, APITestCase
 
-from organizations.models import Organization
 from . import crypto
-from .models import Project, ProjectAPIKey, Secret, SecretVersion
+from .models import Project, ProjectAPIKey, Secret
 
 User = get_user_model()
 
@@ -20,9 +17,10 @@ def make_project(owner, name="prod"):
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    project.default_environment.salt = salt
+    project.default_environment.verifier = crypto.make_verifier(key)
+    project.default_environment.save(update_fields=["salt", "verifier"])
     return project, key
 
 

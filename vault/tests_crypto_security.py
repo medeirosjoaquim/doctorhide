@@ -28,9 +28,17 @@ def make_project(owner, name="prod"):
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    # ``project.default_environment`` is a property that does a fresh
+    # query each call. Capture the env in a local so the salt/verifier
+    # writes and the save are on the *same* Python instance; otherwise
+    # the second call returns a different instance and the saved
+    # values are the ones set on it (only the verifier, in this
+    # shape), not the salt we want.
+    env = project.default_environment
+    env.salt = salt
+    env.verifier = crypto.make_verifier(key)
+    env.save(update_fields=["salt", "verifier"])
     return project, key
 
 
@@ -144,52 +152,59 @@ class ProjectZeroKnowledgeModelTests(TestCase):
         self.key = crypto.derive_key(PASSPHRASE, self.salt, iterations=1000)
 
     def test_project_has_no_passphrase_field(self):
+        """Project is a container (Week 8 Phase 1). The cryptography lives
+        on Environment, so the Project model itself must not carry
+        ``passphrase``/``salt``/``verifier``/``iterations`` as real DB
+        columns. (The shim properties that delegate to
+        ``Project.default_environment`` are Python-level, not DB
+        columns, and so do not show up in ``_meta.get_fields()``.)"""
         field_names = {f.name for f in Project._meta.get_fields()}
+        self.assertNotIn("passphrase", field_names)
+        self.assertNotIn("salt", field_names)
+        self.assertNotIn("iterations", field_names)
+        self.assertNotIn("verifier", field_names)
+
+    def test_environment_has_no_passphrase_field(self):
+        """The crypto boundary moved to Environment in Week 8 Phase 1.
+        Same zero-knowledge contract now applies to the Environment
+        model."""
+        from .models import Environment
+
+        field_names = {f.name for f in Environment._meta.get_fields()}
         self.assertNotIn("passphrase", field_names)
         self.assertIn("salt", field_names)
         self.assertIn("iterations", field_names)
         self.assertIn("verifier", field_names)
 
     def test_passphrase_absent_from_all_persisted_columns(self):
-        Project.objects.create(
-            owner=self.user,
-            public_id=Project.new_public_id(),
-            name="proj",
-            salt=self.salt,
-            iterations=1000,
-            verifier=crypto.make_verifier(self.key),
-        )
-        p = Project.objects.get(name="proj")
-        for field in p._meta.fields:
-            value = getattr(p, field.attname)
-            if isinstance(value, str):
-                self.assertNotIn(PASSPHRASE, value)
+        p = make_project(self.user, name="proj")[0]
+        # Project (the container) and Environment (the crypto) — the
+        # passphrase must not appear in *either* set of persisted
+        # columns.
+        for model in (p, p.default_environment):
+            for field in model._meta.fields:
+                value = getattr(model, field.attname)
+                if isinstance(value, str):
+                    self.assertNotIn(PASSPHRASE, value)
 
     def test_stored_verifier_validates_correct_and_rejects_wrong(self):
-        p = Project.objects.create(
-            owner=self.user,
-            public_id=Project.new_public_id(),
-            name="proj",
-            salt=self.salt,
-            iterations=1000,
-            verifier=crypto.make_verifier(self.key),
-        )
+        p = make_project(self.user, name="proj")[0]
         p.refresh_from_db()
-        correct = crypto.derive_key(PASSPHRASE, p.salt, iterations=p.iterations)
-        wrong = crypto.derive_key("WRONG", p.salt, iterations=p.iterations)
-        self.assertTrue(crypto.verify_key(correct, p.verifier))
-        self.assertFalse(crypto.verify_key(wrong, p.verifier))
+        env = p.default_environment
+        env.refresh_from_db()
+        # Re-derive the test's known passphrase against the env's
+        # *actual* iterations (the factory used the production default
+        # of 600_000, not the test setUp's 1000).
+        correct = crypto.derive_key(PASSPHRASE, env.salt, iterations=env.iterations)
+        wrong = crypto.derive_key("WRONG", env.salt, iterations=env.iterations)
+        self.assertTrue(crypto.verify_key(correct, env.verifier))
+        self.assertFalse(crypto.verify_key(wrong, env.verifier))
 
     def test_iterations_defaults_to_constant(self):
-        p = Project.objects.create(
-            owner=self.user,
-            public_id=Project.new_public_id(),
-            name="proj",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
-        )
-        p.refresh_from_db()
-        self.assertEqual(p.iterations, 600_000)
+        p = make_project(self.user, name="proj")[0]
+        env = p.default_environment
+        env.refresh_from_db()
+        self.assertEqual(env.iterations, 600_000)
 
 
 class ProjectUniquenessTests(TestCase):

@@ -4,17 +4,17 @@ secrets endpoint. These cover the security and lifecycle states left uncovered
 by vault/tests.py.
 """
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from datetime import timedelta
-
 from rest_framework.test import APIClient, APITestCase
 
 from . import crypto
 from .models import Project, ProjectAPIKey, Secret
-from .views import SESSION_KEYS, NEW_API_KEY_SESSION
+from .views import NEW_API_KEY_SESSION, SESSION_KEYS
 
 User = get_user_model()
 
@@ -28,9 +28,11 @@ def make_project(owner, name="prod", passphrase=PASSPHRASE):
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    env = project.default_environment
+    env.salt = salt
+    env.verifier = crypto.make_verifier(key)
+    env.save(update_fields=["salt", "verifier"])
     return project, key
 
 

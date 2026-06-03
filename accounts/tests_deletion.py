@@ -214,14 +214,17 @@ class AccountDeletionTests(TestCase):
         Membership.objects.create(
             organization=org, user=self.user, role=Membership.ROLE_OWNER
         )
-        Project.objects.create(
+        project = Project.objects.create(
             owner=self.user,
             organization=org,
             public_id=Project.new_public_id(),
             name="test-project",
-            salt="salt",
-            verifier="verifier",
         )
+        # Project no longer owns salt/verifier (Week 8 Phase 1); the
+        # signal-seeded default env starts with random crypto, which is
+        # fine for this test (it only checks cascade-delete behaviour,
+        # not crypto validity).
+        _ = project.default_environment
         project_id = Project.objects.first().id
 
         backup_code = create_backup_code(self.user)

@@ -21,9 +21,13 @@ class SecretDescribeAPITests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="describe-proj",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.derived),
         )
+        env = self.project.default_environment
+        env.salt = self.salt
+        env = self.project.default_environment
+
+        env.verifier = crypto.make_verifier(self.derived)
+        env.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 
@@ -78,9 +82,14 @@ class SecretDescribeAPITests(TestCase):
             owner=other_user,
             public_id=Project.new_public_id(),
             name="other-proj",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.derived),
         )
+        env = other_project.default_environment
+
+        env.salt = self.salt
+        env = other_project.default_environment
+
+        env.verifier = crypto.make_verifier(self.derived)
+        env.save(update_fields=["salt", "verifier"])
         Secret.objects.create(
             project=other_project,
             key="theirs",

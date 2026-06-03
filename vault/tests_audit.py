@@ -21,9 +21,13 @@ class AuditEventTests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="auditproj",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        env = self.project.default_environment
+        env.salt = self.salt
+        env = self.project.default_environment
+
+        env.verifier = crypto.make_verifier(self.key)
+        env.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 

@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from organizations.models import Membership, Organization
+
 from . import crypto
 from .models import Project, Secret
 
@@ -26,8 +27,12 @@ class LockRevealTests(TestCase):
         Membership.objects.create(organization=org, user=self.user, role=Membership.ROLE_OWNER)
         self.project = Project.objects.create(
             owner=self.user, organization=org, public_id=Project.new_public_id(),
-            name="p", salt=salt, verifier=crypto.make_verifier(self.key),
+            name="p",
         )
+        env = self.project.default_environment
+        env.salt = salt
+        env.verifier = crypto.make_verifier(self.key)
+        env.save(update_fields=["salt", "verifier"])
         self.secret = Secret.objects.create(
             project=self.project, key="gmail.com",
             ciphertext=crypto.encrypt(self.key, "PLAINTEXT-SECRET"),

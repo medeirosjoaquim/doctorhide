@@ -1,15 +1,16 @@
-import json
-import hmac
 import hashlib
-from unittest.mock import Mock, patch, MagicMock
+import hmac
+import json
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
-from organizations.models import Organization, Membership
+from organizations.models import Membership, Organization
+
 from . import crypto
-from .models import Project, Secret, WebhookEndpoint, WebhookDelivery
-from .webhooks import sign_payload, emit_webhook, SyncHTTPTransport
+from .models import Project, WebhookDelivery, WebhookEndpoint
+from .webhooks import SyncHTTPTransport, emit_webhook, sign_payload
 
 User = get_user_model()
 
@@ -24,9 +25,10 @@ def make_project(owner, organization, name="prod"):
         organization=organization,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    project.default_environment.salt = salt
+    project.default_environment.verifier = crypto.make_verifier(key)
+    project.default_environment.save(update_fields=["salt", "verifier"])
     return project, key
 
 

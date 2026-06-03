@@ -10,7 +10,6 @@ single-user personal-org flow still works.
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
-
 from rest_framework.test import APIClient, APITestCase
 
 from organizations.models import Membership, Organization, membership_for
@@ -18,7 +17,7 @@ from organizations.permissions import ProjectInOrganization
 
 from . import crypto
 from .models import Project, ProjectAPIKey, Secret
-from .tests_authz import make_project, make_secret, verified_login, PASSPHRASE
+from .tests_authz import PASSPHRASE, make_project, make_secret, verified_login
 from .views import CURRENT_ORG_SESSION
 
 User = get_user_model()
@@ -39,9 +38,11 @@ def org_project(owner, org, name="prod"):
         organization=org,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    env = project.default_environment
+    env.salt = salt
+    env.verifier = crypto.make_verifier(key)
+    env.save(update_fields=["salt", "verifier"])
     return project, key
 
 

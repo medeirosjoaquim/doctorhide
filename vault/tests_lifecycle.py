@@ -22,9 +22,11 @@ def make_project(owner, name="prod"):
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    env = project.default_environment
+    env.salt = salt
+    env.verifier = crypto.make_verifier(key)
+    env.save(update_fields=["salt", "verifier"])
     return project, key
 
 

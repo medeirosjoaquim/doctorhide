@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from organizations.models import Organization
+
 from . import crypto
 from .models import AuditEvent, Project, ProjectAPIKey, Secret
 
@@ -17,13 +18,25 @@ PASSPHRASE = "correct-horse-battery"
 def make_project(owner, name="prod"):
     salt = crypto.generate_salt()
     key = crypto.derive_key(PASSPHRASE, salt)
+    # The Project model no longer owns salt/verifier (Week 8 Phase 1).
+    # Create the project; the post_save signal auto-seeds a default
+    # Environment with random crypto. We then overwrite the env's
+    # crypto with the test's deterministic passphrase so the test can
+    # derive the same key later via ``project.salt`` (which is a
+    # read-only shim that reads from the env).
     project = Project.objects.create(
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    # Capture the env in a local first; ``default_environment`` is a
+    # property that re-queries, so two separate calls return two
+    # different Python instances and only the second one's writes
+    # would be saved.
+    env = project.default_environment
+    env.salt = salt
+    env.verifier = crypto.make_verifier(key)
+    env.save(update_fields=["salt", "verifier"])
     return project, key
 
 

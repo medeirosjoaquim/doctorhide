@@ -9,8 +9,8 @@ from django.urls import reverse
 from organizations.models import Membership, Organization
 
 from .models import Project
-from .views import CURRENT_ORG_SESSION, current_organization
 from .tests_authz import verified_login
+from .views import CURRENT_ORG_SESSION, current_organization
 
 User = get_user_model()
 
@@ -24,9 +24,14 @@ class PersonalOrganizationTests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="prod",
-            salt="s" * 16,
-            verifier="v",
         )
+        env = project.default_environment
+
+        env.salt = "s" * 16
+        env = project.default_environment
+
+        env.verifier = "v"
+        env.save(update_fields=["salt", "verifier"])
         self.assertIsNotNone(project.organization)
         membership = Membership.objects.get(
             user=self.user, organization=project.organization
@@ -38,16 +43,26 @@ class PersonalOrganizationTests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="one",
-            salt="s" * 16,
-            verifier="v",
         )
+        env = first.default_environment
+
+        env.salt = "s" * 16
+        env = first.default_environment
+
+        env.verifier = "v"
+        env.save(update_fields=["salt", "verifier"])
         second = Project.objects.create(
             owner=self.user,
             public_id=Project.new_public_id(),
             name="two",
-            salt="s" * 16,
-            verifier="v",
         )
+        env = second.default_environment
+
+        env.salt = "s" * 16
+        env = second.default_environment
+
+        env.verifier = "v"
+        env.save(update_fields=["salt", "verifier"])
         self.assertEqual(first.organization_id, second.organization_id)
         self.assertEqual(
             Organization.objects.filter(memberships__user=self.user).count(), 1

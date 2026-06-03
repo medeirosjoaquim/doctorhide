@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from organizations.models import Membership, Organization
+
 from . import crypto
 from .models import Project, Secret
 
@@ -28,9 +29,10 @@ class SecretEditTests(TestCase):
             organization=org,
             public_id=Project.new_public_id(),
             name="p",
-            salt=salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        self.project.default_environment.salt = salt
+        self.project.default_environment.verifier = crypto.make_verifier(self.key)
+        self.project.default_environment.save(update_fields=["salt", "verifier"])
         self.secret = Secret.objects.create(
             project=self.project,
             key="gmail.com",

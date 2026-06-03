@@ -17,9 +17,10 @@ def make_project(owner, name="prod"):
         owner=owner,
         public_id=Project.new_public_id(),
         name=name,
-        salt=salt,
-        verifier=crypto.make_verifier(key),
     )
+    project.default_environment.salt = salt
+    project.default_environment.verifier = crypto.make_verifier(key)
+    project.default_environment.save(update_fields=["salt", "verifier"])
     return project, key
 
 
@@ -33,9 +34,10 @@ class APIVersioningTests(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="versiontest",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        self.project.default_environment.salt = self.salt
+        self.project.default_environment.verifier = crypto.make_verifier(self.key)
+        self.project.default_environment.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
         Secret.objects.create(
@@ -94,9 +96,10 @@ class CORSPreflight(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="corstest",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        self.project.default_environment.salt = self.salt
+        self.project.default_environment.verifier = crypto.make_verifier(self.key)
+        self.project.default_environment.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 
@@ -149,9 +152,10 @@ class CORSOriginTest(TestCase):
             owner=self.user,
             public_id=Project.new_public_id(),
             name="corsorigintest",
-            salt=self.salt,
-            verifier=crypto.make_verifier(self.key),
         )
+        self.project.default_environment.salt = self.salt
+        self.project.default_environment.verifier = crypto.make_verifier(self.key)
+        self.project.default_environment.save(update_fields=["salt", "verifier"])
         self.api_key, self.token = ProjectAPIKey.generate(self.project)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.token}")
 
