@@ -16,6 +16,11 @@ DEFAULT_ITERATIONS = 600_000
 SALT_BYTES = 16
 _VERIFY_TOKEN = b"doctorhide-verify"
 
+# Re-exported so callers can ``except crypto.InvalidFernetToken`` without
+# reaching into the cryptography package directly. The alias keeps
+# rekey/crypto-decrypt call sites readable.
+InvalidFernetToken = InvalidToken
+
 
 def generate_salt() -> str:
     """A fresh random salt, base64-encoded for storage."""

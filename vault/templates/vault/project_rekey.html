@@ -1,0 +1,40 @@
+{% extends "accounts/base.html" %}
+{% block title %}Rotate passphrase — {{ project.name }} — doctorhide{% endblock %}
+{% block body %}
+<div class="card-wrap">
+<div class="card">
+    <h1>Rotate passphrase</h1>
+    <p class="sub">
+        <strong>{{ project.name }}</strong> ({{ project.public_id }})
+    </p>
+    {% if requires_rekey %}
+    <p class="error" style="background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.25); padding: 0.7rem 0.9rem; border-radius: 8px;">
+        This project was flagged for a passphrase rotation by the
+        security team. Normal unlock is disabled until you set a new
+        passphrase. Enter the <em>current</em> passphrase (to prove you
+        can still decrypt this project's data) and a <em>new</em>
+        passphrase to continue.
+    </p>
+    {% else %}
+    <p class="sub">
+        Provide the <em>current</em> passphrase to prove you can still
+        decrypt this project's data, and a <em>new</em> passphrase to
+        rotate to. All secret values and version history are re-encrypted
+        in one transaction; on failure nothing is changed.
+    </p>
+    {% endif %}
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post" action="{% url 'vault:rekey' public_id=project.public_id %}">
+        {% csrf_token %}
+        <label for="old_passphrase">Current passphrase</label>
+        {% include "accounts/_pw_field.html" with field_id="old_passphrase" field_name="old_passphrase" autocomplete="current-password" %}
+        <label for="new_passphrase" style="margin-top:0.8rem; display:block;">New passphrase</label>
+        {% include "accounts/_pw_field.html" with field_id="new_passphrase" field_name="new_passphrase" autocomplete="new-password" %}
+        <label for="new_passphrase_confirm" style="margin-top:0.8rem; display:block;">Confirm new passphrase</label>
+        {% include "accounts/_pw_field.html" with field_id="new_passphrase_confirm" field_name="new_passphrase_confirm" autocomplete="new-password" %}
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:1.3rem;">Rotate passphrase</button>
+    </form>
+    <p class="muted-link" style="margin-top:1.2rem;"><a href="{% url 'vault:detail' public_id=project.public_id %}">Back to project</a></p>
+</div>
+</div>
+{% endblock %}

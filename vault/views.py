@@ -1,4 +1,7 @@
 from django.contrib import messages
+from django.contrib.sessions.backends.db import SessionStore
+from django.contrib.sessions.models import Session
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django_otp.decorators import otp_required
@@ -10,7 +13,7 @@ from organizations.models import (
     personal_organization,
 )
 
-from . import crypto
+from . import audit, crypto
 from .models import Project, ProjectAPIKey, Secret, SecretVersion
 
 SESSION_KEYS = "vault_keys"  # {public_id: fernet_key_str} for unlocked projects
@@ -107,9 +110,17 @@ def project_create(request):
                 organization=org,
                 public_id=Project.new_public_id(),
                 name=name,
-                salt=salt,
-                verifier=crypto.make_verifier(key),
             )
+            # The post_save signal auto-seeded a default Environment with
+            # random (unrecoverable) crypto. Overwrite it with the user's
+            # passphrase-derived crypto so the project is actually usable.
+            # This is the legacy single-env project shape; Phase 3 will
+            # expand this to seed three envs (development/staging/
+            # production) with the user's passphrase.
+            env = project.default_environment
+            env.salt = salt
+            env.verifier = crypto.make_verifier(key)
+            env.save(update_fields=["salt", "verifier"])
             _store_key(request, project, key)  # auto-unlock after creation
             return redirect("vault:detail", public_id=project.public_id)
 
@@ -140,6 +151,7 @@ def project_detail(request, public_id):
             "secrets": secrets_view,
             "api_keys": project.api_keys.all(),
             "new_api_key": new_api_key,
+            "requires_rekey": project.requires_rekey,
         },
     )
 
@@ -147,6 +159,12 @@ def project_detail(request, public_id):
 @otp_required
 def project_unlock(request, public_id):
     project = _get_project(request, public_id)
+    # If an incident requires this project to be re-keyed, normal unlock
+    # is disabled and the user is sent to the rekey flow instead. This
+    # prevents an operator from accidentally using a passphrase the
+    # response team has flagged as suspect.
+    if project.requires_rekey:
+        return redirect("vault:rekey", public_id=public_id)
     if request.method == "POST":
         passphrase = request.POST.get("passphrase", "")
         key = crypto.derive_key(passphrase, project.salt, project.iterations)
@@ -154,6 +172,11 @@ def project_unlock(request, public_id):
             _store_key(request, project, key)
         else:
             messages.error(request, "Wrong salt.")
+            from .metrics import vault_unlock_failures_total
+
+            vault_unlock_failures_total.labels(
+                project_id=project.public_id
+            ).inc()
     return redirect("vault:detail", public_id=public_id)
 
 
@@ -264,3 +287,184 @@ def secret_version_restore(request, public_id, secret_id, version_id):
             messages.success(request, "Version restored.")
 
     return redirect("vault:secret_versions", public_id=public_id, secret_id=secret_id)
+
+
+def _forget_project_in_all_sessions(public_id: str) -> int:
+    """Remove any cached unlock key for ``public_id`` from every session row.
+
+    The session store is a per-user cache of derived Fernet keys (see
+    ``_unlocked_key``). After a rekey, every cached entry pointing at the
+    old key is wrong and must be dropped, otherwise a stale session could
+    attempt to read re-encrypted ciphertexts with the obsolete key and the
+    user would see empty/garbled reveals instead of clean errors.
+
+    Returns the number of session rows touched, for audit logging.
+    """
+    touched = 0
+    for session in Session.objects.all():
+        # The whole per-row block is guarded: a malformed/expired row
+        # (e.g. garbage ``session_data`` from a botched migration, an
+        # expired session whose key has been recycled, or a future
+        # pickle format change) must never break the rekey. The ``except``
+        # covers the ``SessionStore`` construction *and* the
+        # ``store.get(SESSION_KEYS)`` decode, because the decode can
+        # raise ``binascii.Error`` / ``pickle.UnpicklingError`` / etc.
+        # on a corrupt row.
+        try:
+            store = SessionStore(session_key=session.session_key)
+            keys = store.get(SESSION_KEYS)
+        except Exception:
+            continue
+        if not isinstance(keys, dict):
+            continue
+        if public_id in keys:
+            keys = dict(keys)
+            keys.pop(public_id, None)
+            store[SESSION_KEYS] = keys
+            store.save()
+            touched += 1
+    return touched
+
+
+def _reencrypt_project(project, old_key, new_key) -> tuple[int, int]:
+    """Re-encrypt every live Secret and every SecretVersion under ``new_key``.
+
+    Decrypts with ``old_key``, encrypts with ``new_key``, and saves the
+    updated ciphertext on the existing row (no version churn). Returns
+    ``(secret_count, version_count)``. Must be called inside an outer
+    ``transaction.atomic()`` so that a mid-iteration failure rolls back
+    all of the writes in one shot.
+    """
+    secrets = list(project.secrets.filter(deleted_at__isnull=True))
+    for secret in secrets:
+        plaintext = crypto.decrypt(old_key, secret.ciphertext)
+        secret.ciphertext = crypto.encrypt(new_key, plaintext)
+        secret.save(update_fields=["ciphertext"])
+
+    version_count = 0
+    for secret in project.secrets.all():
+        for version in secret.versions.all():
+            plaintext = crypto.decrypt(old_key, version.ciphertext)
+            version.ciphertext = crypto.encrypt(new_key, plaintext)
+            version.save(update_fields=["ciphertext"])
+            version_count += 1
+
+    return len(secrets), version_count
+
+
+def _validate_rekey_form(post_data) -> str | None:
+    """Return None if the rekey form's inputs are consistent, or a
+    user-facing error string. Pulled out of ``project_rekey`` to keep the
+    view's complexity below the project lint threshold."""
+    old_passphrase = post_data.get("old_passphrase", "")
+    new_passphrase = post_data.get("new_passphrase", "")
+    new_passphrase_confirm = post_data.get("new_passphrase_confirm", "")
+
+    if not old_passphrase or not new_passphrase:
+        return "Both the current and new passphrases are required."
+    if new_passphrase != new_passphrase_confirm:
+        return "The two new passphrase entries do not match."
+    if len(new_passphrase) < 8:
+        return "New passphrase must be at least 8 characters."
+    return None
+
+
+@otp_required
+def project_rekey(request, public_id):
+    """Forced or voluntary passphrase rotation for a project.
+
+    GET shows a form asking for the *current* passphrase (to prove the
+    caller can still decrypt the existing data) and a *new* passphrase
+    (the one to rotate to). POST re-derives a fresh key from the new
+    passphrase, re-encrypts every ``Secret.ciphertext`` and every
+    ``SecretVersion.ciphertext`` under the new key, rotates
+    ``Project.salt``/``Project.verifier``/``Project.iterations``, and
+    invalidates every cached unlock key for the project across all
+    active sessions.
+
+    The view is destructive: a corrupt ciphertext, a wrong old passphrase,
+    or a write failure all roll the whole operation back. A successful
+    rekey emits an ``AuditEvent(action='project.rekey')`` row carrying
+    the number of secrets and version rows rotated, plus the number of
+    sessions that were invalidated. The rekey flag (``requires_rekey``)
+    is cleared at the end of a successful rotation.
+    """
+    project = _get_project(request, public_id, required_role=Membership.ROLE_OWNER)
+
+    error = None
+    if request.method == "POST":
+        error = _validate_rekey_form(request.POST)
+        if error is None:
+            old_passphrase = request.POST["old_passphrase"]
+            new_passphrase = request.POST["new_passphrase"]
+            old_key = crypto.derive_key(
+                old_passphrase, project.salt, project.iterations
+            )
+            if not crypto.verify_key(old_key, project.verifier):
+                audit.record(
+                    request,
+                    "project.rekey",
+                    "denied:wrong_old_passphrase",
+                    project=project,
+                )
+                error = "Current passphrase is incorrect."
+            else:
+                new_salt = crypto.generate_salt()
+                new_key = crypto.derive_key(
+                    new_passphrase, new_salt, project.iterations
+                )
+                try:
+                    with transaction.atomic():
+                        secret_count, version_count = _reencrypt_project(
+                            project, old_key, new_key
+                        )
+                        env = project.default_environment
+                        env.salt = new_salt
+                        env.verifier = crypto.make_verifier(new_key)
+                        env.requires_rekey = False
+                        env.save(
+                            update_fields=["salt", "verifier", "requires_rekey"]
+                        )
+                except crypto.InvalidFernetToken:
+                    audit.record(
+                        request,
+                        "project.rekey",
+                        "failed:ciphertext_corrupt",
+                        project=project,
+                    )
+                    error = (
+                        "Could not re-encrypt every secret. The project "
+                        "was not modified; contact support."
+                    )
+                else:
+                    sessions_touched = _forget_project_in_all_sessions(
+                        project.public_id
+                    )
+                    # Drop the unlock key from the current session too.
+                    _forget_key(request, project)
+                    audit.record(
+                        request,
+                        "project.rekey",
+                        "success",
+                        project=project,
+                        secret_key=(
+                            f"secrets={secret_count};versions={version_count};"
+                            f"sessions_invalidated={sessions_touched}"
+                        ),
+                    )
+                    messages.success(
+                        request,
+                        "Passphrase rotated. The project is locked; "
+                        "use your new passphrase to unlock it.",
+                    )
+                    return redirect("vault:detail", public_id=public_id)
+
+    return render(
+        request,
+        "vault/project_rekey.html",
+        {
+            "project": project,
+            "error": error,
+            "requires_rekey": project.requires_rekey,
+        },
+    )
