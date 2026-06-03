@@ -44,11 +44,27 @@ We aim to:
 
 ### Encryption
 
-- **Project secrets:** Encrypted with Fernet (AES-128-CBC + HMAC-SHA256).
-- **Key derivation:** PBKDF2 with SHA-256, 600,000 iterations by default (per OWASP recommendations).
-- **Per-project salt:** Unique, random, never reused.
-- **Passphrase policy:** Never stored server-side. Supplied by client on each access.
-- **Verifier:** Encrypted token proving passphrase correctness without storing it.
+- **Project secrets:** Encrypted with Fernet (AES-128-CBC + HMAC-SHA256). The
+  Fernet key is derived per project from the user-supplied passphrase
+  + a per-project salt. Plaintext never leaves the client (the API
+  returns ciphertext + KDF params; the client derives the key and
+  decrypts locally).
+- **Per-environment (Week 8):** Each project's encryption is split
+  into a tree of `Environment` rows (`dev`, `staging`, `prod`, or
+  custom). Each environment owns its own salt, verifier, KDF
+  iterations, and `requires_rekey` flag. A leaked dev passphrase
+  does not expose prod ciphertexts because the two environments
+  derive keys from independent salts.
+- **Key derivation:** PBKDF2 with SHA-256, 600,000 iterations by
+  default (per OWASP recommendations). The KDF iteration count is
+  stored per-Environment so an operator can tighten it on a schedule.
+- **Per-environment salt:** Unique, random, never reused.
+- **Passphrase policy:** Never stored server-side. Supplied by client
+  on each access. The rekey flow (`POST /projects/<id>/rekey`)
+  rotates the passphrase under a single atomic transaction;
+  session keys cached in the DB are dropped across every device.
+- **Verifier:** Encrypted token proving passphrase correctness
+  without storing the passphrase.
 
 ### Secrets Management
 
@@ -73,14 +89,51 @@ We aim to:
 ### Rate Limiting
 
 - Vault API: 1000 requests/min per project (configurable via VAULT_API_THROTTLE_RATE).
-- Login attempts: Not yet rate-limited; implement in future if needed.
+- Login attempts: Throttled at 3/hour per superuser on the incident
+  endpoint; the in-process login detector (`vault.alerts`) fires a
+  Prometheus alert + AuditEvent row at 5 failed attempts per
+  (username, source_ip) within 15 minutes.
+- See [INCIDENT_RESPONSE.md § Detection](docs/INCIDENT_RESPONSE.md#2-detection--what-should-page-someone)
+  for the full list of Prometheus alert rules.
 
 ### Audit Logging
 
-- **AuditEvent model:** Append-only, write-once records of vault access.
-- **Fields:** principal (API key prefix), action, organization, project, secret_key, timestamp, source_ip, outcome.
+- **AuditEvent model:** Append-only, write-once records of vault access
+  and auth events.
+- **Fields:** principal (API key prefix or username), action,
+  organization, project, secret_key, timestamp, source_ip, outcome.
 - **Access logs:** Can be queried by organization members for compliance.
-- **Retention:** See DATA_RETENTION.md.
+- **Retention:** Default 90 days, purgable via
+  `python manage.py cleanup_audit_logs --days=N`. Run weekly from
+  cron / k8s CronJob. See `RUNBOOK.md` for the schedule.
+
+### Monitoring, Alerting, Incident Response
+
+- **Metrics:** `django-prometheus` exposes `/metrics` with
+  auto-instrumented Django request latency, DB query time, and
+  process metrics, plus four custom counters
+  (`vault_secret_reads_total`, `vault_secret_batch_get_total`,
+  `vault_unlock_failures_total`, `vault_security_alerts_total`).
+- **Prometheus:** Scrapes `/metrics` every 15s
+  (`monitoring/prometheus.yml`).
+- **Alert rules:** Four rules in `monitoring/alerts.yml` page on
+  incident-endpoint abuse, failed-unlock spikes, secret-read
+  anomalies, and any `vault_security_alerts_total` increment.
+  Alertmanager (`monitoring/alertmanager.yml`) routes `critical`
+  severity alerts to a separate receiver with a 10s `group_wait`
+  and 1h `repeat_interval`. The `doctorhide-oncall` webhook target
+  is a placeholder; production should point it at PagerDuty /
+  Opsgenie.
+- **Grafana:** `monitoring/grafana/dashboards/doctorhide-overview.json`
+  is auto-provisioned on container start; six panels (reads,
+  batch reads, failed unlocks, request p95, DB p95, security
+  alerts).
+- **Incident response:** See
+  [docs/INCIDENT_RESPONSE.md](docs/INCIDENT_RESPONSE.md) for the
+  operator playbook: detection signals, triage checklist,
+  containment (kill switch + forced rekey), eradication, user
+  notification template, post-mortem template, and a quarterly
+  tabletop-exercise program.
 
 ### Database Security
 

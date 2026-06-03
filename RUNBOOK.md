@@ -166,6 +166,11 @@ Project secrets are encrypted with keys derived from user-provided passphrases (
 
 ## Incident Response
 
+For breach-specific playbooks (detection checklist, kill-switch command/API
+walkthrough, user-notification template, post-mortem template, quarterly
+tabletop), see [`docs/INCIDENT_RESPONSE.md`](docs/INCIDENT_RESPONSE.md).
+The summary below covers infrastructure-level failures only.
+
 ### Database Down
 
 1. Check Postgres is running: `docker ps | grep postgres` or `systemctl status postgresql`.
